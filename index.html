@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>雾都飞升：无人机挑战</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a1a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    #gameWrapper {
+      position: relative;
+      width: 420px;
+      height: 640px;
+    }
+
+    canvas {
+      display: block;
+      border: 2px solid #00e5ff44;
+      border-radius: 8px;
+      box-shadow: 0 0 40px #00e5ff22, 0 0 80px #00e5ff11;
+    }
+
+    #ui-overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    /* 顶部 HUD */
+    #hud {
+      position: absolute;
+      top: 12px; left: 0; right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 0 16px;
+      pointer-events: none;
+    }
+
+    .hud-box {
+      background: rgba(0,0,0,0.55);
+      border: 1px solid #00e5ff55;
+      border-radius: 6px;
+      padding: 5px 12px;
+      color: #00e5ff;
+      font-size: 13px;
+      line-height: 1.6;
+      text-shadow: 0 0 8px #00e5ff;
+    }
+
+    /* 音效开关 */
+    #soundToggle {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.5);
+      border: 1px solid #00e5ff44;
+      border-radius: 20px;
+      color: #00e5ff;
+      font-size: 16px;
+      padding: 3px 14px;
+      cursor: pointer;
+      pointer-events: all;
+      user-select: none;
+      letter-spacing: 1px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    #soundToggle:hover { background: rgba(0,229,255,0.15); border-color: #00e5ff88; }
+    #soundToggle.off { color: #4a7a9b; border-color: #4a7a9b44; }
+
+    .hud-label { color: #7ecfff; font-size: 11px; }
+    .hud-value { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+
+    /* 开始界面 */
+    #startScreen {
+      position: absolute;
+      inset: 0;
+      background: rgba(8,10,30,0.92);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      pointer-events: all;
+      cursor: pointer;
+    }
+
+    #startScreen .title {
+      font-size: 26px;
+      font-weight: bold;
+      color: #00e5ff;
+      text-shadow: 0 0 20px #00e5ff, 0 0 40px #00e5ff66;
+      letter-spacing: 3px;
+      margin-bottom: 8px;
+      animation: glow 2s ease-in-out infinite alternate;
+    }
+    #startScreen .subtitle {
+      font-size: 13px;
+      color: #7ecfff88;
+      letter-spacing: 6px;
+      margin-bottom: 48px;
+    }
+    #startScreen .start-hint {
+      font-size: 16px;
+      color: #fff;
+      background: #00e5ff22;
+      border: 1px solid #00e5ff55;
+      border-radius: 30px;
+      padding: 10px 30px;
+      letter-spacing: 2px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    #startScreen .tip {
+      margin-top: 28px;
+      font-size: 12px;
+      color: #4a7a9b;
+      line-height: 1.9;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+    #startScreen .drone-icon {
+      font-size: 52px;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 0 14px #00e5ff);
+      animation: hover-anim 2.5s ease-in-out infinite;
+    }
+
+    /* 游戏结束界面 */
+    #gameOverScreen {
+      position: absolute;
+      inset: 0;
+      background: rgba(8,10,30,0.92);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      pointer-events: all;
+      cursor: pointer;
+    }
+
+    #gameOverScreen.show { display: flex; }
+
+    #gameOverScreen .over-title {
+      font-size: 34px;
+      font-weight: bold;
+      color: #ff4466;
+      text-shadow: 0 0 20px #ff4466, 0 0 40px #ff446666;
+      letter-spacing: 4px;
+      margin-bottom: 6px;
+      animation: shake 0.4s ease-in-out 3;
+    }
+    #gameOverScreen .over-sub {
+      font-size: 12px;
+      color: #ff446688;
+      letter-spacing: 5px;
+      margin-bottom: 36px;
+    }
+    #gameOverScreen .score-block {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid #00e5ff44;
+      border-radius: 10px;
+      padding: 18px 36px;
+      text-align: center;
+      margin-bottom: 32px;
+      min-width: 220px;
+    }
+    #gameOverScreen .score-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 7px 0;
+    }
+    .score-lbl { color: #7ecfff; font-size: 12px; letter-spacing: 1px; }
+    .score-val { color: #fff; font-size: 20px; font-weight: bold;
+                 text-shadow: 0 0 8px #00e5ff; }
+    .score-val.best { color: #ffd700; text-shadow: 0 0 8px #ffd700; }
+    #gameOverScreen .restart-btn {
+      font-size: 15px;
+      color: #fff;
+      background: #00e5ff22;
+      border: 1px solid #00e5ff88;
+      border-radius: 30px;
+      padding: 10px 36px;
+      letter-spacing: 2px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes glow {
+      from { text-shadow: 0 0 12px #00e5ff, 0 0 24px #00e5ff44; }
+      to   { text-shadow: 0 0 28px #00e5ff, 0 0 60px #00e5ff88; }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.65; transform: scale(0.97); }
+    }
+    @keyframes hover-anim {
+      0%, 100% { transform: translateY(0px); }
+      50%       { transform: translateY(-10px); }
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25%       { transform: translateX(-6px); }
+      75%       { transform: translateX(6px); }
+    }
+  </style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="gameCanvas" width="420" height="640"></canvas>
+
+  <div id="ui-overlay">
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-box">
+        <div class="hud-label">当前高度</div>
+        <div class="hud-value" id="scoreDisplay">0 m</div>
+      </div>
+      <div class="hud-box">
+        <div class="hud-label">最高记录</div>
+        <div class="hud-value" id="bestDisplay">0 m</div>
+      </div>
+    </div>
+
+    <!-- 音效开关 -->
+    <div id="soundToggle" title="音效开关">🔊</div>
+
+    <!-- 开始界面 -->
+    <div id="startScreen">
+      <div class="drone-icon">🚁</div>
+      <div class="title">雾都飞升</div>
+      <div class="subtitle">无 人 机 挑 战</div>
+      <div class="start-hint">按 空格键 开始游戏</div>
+      <div class="tip">
+        ← → 方向键控制左右移动<br>
+        无人机自动持续跳跃，向上爬升<br>
+        跌落底部则游戏结束
+      </div>
+    </div>
+
+    <!-- 游戏结束界面 -->
+    <div id="gameOverScreen">
+      <div class="over-title">GAME OVER</div>
+      <div class="over-sub">无人机已坠落</div>
+      <div class="score-block">
+        <div class="score-row">
+          <span class="score-lbl">本次高度</span>
+          <span class="score-val" id="finalScore">0 m</span>
+        </div>
+        <div class="score-row">
+          <span class="score-lbl">历史最高</span>
+          <span class="score-val best" id="finalBest">0 m</span>
+        </div>
+      </div>
+      <div class="restart-btn">按 空格键 重新开始</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  雾都飞升：无人机挑战  —— 完整游戏逻辑
+// ============================================================
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const W = canvas.width;
+const H = canvas.height;
+
+// ---------- DOM ----------
+const scoreDisplay = document.getElementById('scoreDisplay');
+const bestDisplay  = document.getElementById('bestDisplay');
+const startScreen  = document.getElementById('startScreen');
+const gameOverScr  = document.getElementById('gameOverScreen');
+const finalScore   = document.getElementById('finalScore');
+const finalBest    = document.getElementById('finalBest');
+
+// ============================================================
+//  常量与配置
+// ============================================================
+const GRAVITY       = 0.38;       // 重力
+const JUMP_BASE     = -10.5;      // 基础跳跃速度
+const MOVE_SPEED    = 4.2;        // 左右移动速度
+const PLAT_W_MIN    = 60;
+const PLAT_W_MAX    = 110;
+const PLAT_GAP_MIN  = 60;         // 平台竖向最小间距
+const PLAT_GAP_MAX  = 110;        // 平台竖向最大间距
+const SPEED_INC     = 0.00015;    // 每帧速度增量（滚动速度）
+const SCROLL_BASE   = 1.8;        // 初始滚动速度（像素/帧）
+const DRONE_W       = 44;
+const DRONE_H       = 22;
+
+// ============================================================
+//  游戏状态
+// ============================================================
+let state = 'idle'; // idle | running | over
+let bestHeight = 0;
+
+let drone, platforms, scrollY, currentHeight, scrollSpeed, frameCount;
+let keys = { left: false, right: false };
+
+// ============================================================
+//  音效系统（Web Audio API 程序化合成）
+// ============================================================
+let audioCtx = null;
+let soundEnabled = true;
+let lastMilestone = 0;
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function getToggle() {
+  return document.getElementById('soundToggle');
+}
+
+// 音效开关
+getToggle() && getToggle().addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  const btn = getToggle();
+  if (soundEnabled) {
+    btn.textContent = '🔊';
+    btn.classList.remove('off');
+  } else {
+    btn.textContent = '🔇';
+    btn.classList.add('off');
+  }
+});
+
+function playJump() {
+  if (!soundEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(400, t);
+  osc.frequency.exponentialRampToValueAtTime(700, t + 0.08);
+  osc.frequency.exponentialRampToValueAtTime(300, t + 0.15);
+  gain.gain.setValueAtTime(0.18, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  osc.start(t); osc.stop(t + 0.15);
+}
+
+function playLand() {
+  if (!soundEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  const bufSize = audioCtx.sampleRate * 0.05;
+  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = 'lowpass'; filt.frequency.value = 400;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.12, t);
+  src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+  src.start(t);
+}
+
+function playMilestone() {
+  if (!soundEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  // 上升音阶
+  [523, 659, 784, 1047].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const st = t + i * 0.07;
+    gain.gain.setValueAtTime(0, st);
+    gain.gain.linearRampToValueAtTime(0.2, st + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, st + 0.25);
+    osc.start(st); osc.stop(st + 0.25);
+  });
+}
+
+function playGameOver() {
+  if (!soundEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  // 下落音调
+  [440, 330, 220, 110].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.value = freq;
+    const st = t + i * 0.12;
+    gain.gain.setValueAtTime(0.15, st);
+    gain.gain.exponentialRampToValueAtTime(0.001, st + 0.3);
+    osc.start(st); osc.stop(st + 0.3);
+  });
+  // 加一声低沉轰鸣
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+  osc2.connect(gain2); gain2.connect(audioCtx.destination);
+  osc2.type = 'sine'; osc2.frequency.value = 55;
+  gain2.gain.setValueAtTime(0.3, t + 0.4);
+  gain2.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+  osc2.start(t + 0.4); osc2.stop(t + 1.2);
+}
+
+function playStart() {
+  if (!soundEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  // 上升启动音
+  [262, 330, 392, 523].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const st = t + i * 0.06;
+    gain.gain.setValueAtTime(0.15, st);
+    gain.gain.exponentialRampToValueAtTime(0.001, st + 0.2);
+    osc.start(st); osc.stop(st + 0.2);
+  });
+}
+
+// ============================================================
+//  粒子系统（推进器尾焰）
+// ============================================================
+let particles = [];
+
+function spawnParticle(x, y) {
+  particles.push({
+    x, y,
+    vx: (Math.random() - 0.5) * 1.2,
+    vy: Math.random() * 2 + 1,
+    life: 1,
+    size: Math.random() * 4 + 2,
+  });
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.06;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life * 0.8;
+    const r = p.life > 0.5 ? 255 : Math.floor(255 * p.life * 2);
+    const g = Math.floor(200 * p.life);
+    ctx.fillStyle = `rgb(${r},${g},50)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+//  背景（雾都赛博朋克风）
+// ============================================================
+
+// 预生成星点
+const stars = Array.from({ length: 80 }, () => ({
+  x: Math.random() * W,
+  y: Math.random() * H,
+  r: Math.random() * 1.5 + 0.3,
+  alpha: Math.random() * 0.5 + 0.3,
+}));
+
+// 建筑轮廓（固定装饰，不随平台滚动）
+const buildings = [
+  { x: 0,   w: 60,  h: 120 },
+  { x: 55,  w: 40,  h: 90  },
+  { x: 90,  w: 80,  h: 160 },
+  { x: 165, w: 50,  h: 100 },
+  { x: 210, w: 70,  h: 140 },
+  { x: 275, w: 45,  h: 80  },
+  { x: 315, w: 65,  h: 130 },
+  { x: 370, w: 50,  h: 110 },
+];
+
+function drawBackground() {
+  // 渐变天空
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#05050f');
+  sky.addColorStop(0.6, '#0d1535');
+  sky.addColorStop(1, '#1a2a50');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // 星点
+  for (const s of stars) {
+    ctx.globalAlpha = s.alpha;
+    ctx.fillStyle = '#cce8ff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // 雾气渐变
+  const fog = ctx.createLinearGradient(0, H * 0.55, 0, H);
+  fog.addColorStop(0, 'rgba(20,40,80,0)');
+  fog.addColorStop(1, 'rgba(10,20,50,0.65)');
+  ctx.fillStyle = fog;
+  ctx.fillRect(0, H * 0.55, W, H * 0.45);
+
+  // 建筑轮廓
+  ctx.fillStyle = '#080c20';
+  for (const b of buildings) {
+    ctx.fillRect(b.x, H - b.h, b.w, b.h);
+    // 窗户
+    ctx.fillStyle = '#00e5ff18';
+    for (let wy = H - b.h + 10; wy < H - 10; wy += 18) {
+      for (let wx = b.x + 8; wx < b.x + b.w - 8; wx += 14) {
+        if (Math.random() > 0.4) {
+          ctx.fillRect(wx, wy, 7, 10);
+        }
+      }
+    }
+    ctx.fillStyle = '#080c20';
+  }
+}
+
+// ============================================================
+//  平台
+// ============================================================
+function makePlatform(y, first) {
+  const w = first ? 100 : PLAT_W_MIN + Math.random() * (PLAT_W_MAX - PLAT_W_MIN);
+  const x = first ? (W - w) / 2 : Math.random() * (W - w - 10) + 5;
+  return { x, y, w, h: 14, glow: Math.random() > 0.6 };
+}
+
+function generateInitialPlatforms() {
+  platforms = [];
+  // 底部起始平台（宽大方便落脚）
+  platforms.push({ x: W / 2 - 70, y: H - 80, w: 140, h: 14, glow: false });
+  let y = H - 80;
+  for (let i = 0; i < 16; i++) {
+    y -= PLAT_GAP_MIN + Math.random() * (PLAT_GAP_MAX - PLAT_GAP_MIN);
+    platforms.push(makePlatform(y, false));
+  }
+}
+
+function drawPlatform(p) {
+  // 平台底部阴影
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(p.x + 4, p.y + p.h, p.w - 8, 6);
+
+  // 平台主体渐变
+  const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
+  if (p.glow) {
+    grad.addColorStop(0, '#00c8ff');
+    grad.addColorStop(1, '#005580');
+  } else {
+    grad.addColorStop(0, '#3a6ea8');
+    grad.addColorStop(1, '#1a3a5c');
+  }
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(p.x, p.y, p.w, p.h, 4);
+  ctx.fill();
+
+  // 顶部高光
+  ctx.fillStyle = p.glow ? 'rgba(150,240,255,0.55)' : 'rgba(180,210,255,0.25)';
+  ctx.beginPath();
+  ctx.roundRect(p.x + 2, p.y + 1, p.w - 4, 4, 2);
+  ctx.fill();
+
+  // 发光描边
+  if (p.glow) {
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = '#00e5ffcc';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(p.x, p.y, p.w, p.h, 4);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ============================================================
+//  无人机绘制
+// ============================================================
+function drawDrone(x, y, vy) {
+  const cx = x + DRONE_W / 2;
+  const cy = y + DRONE_H / 2;
+
+  // 推进器尾焰粒子
+  if (frameCount % 2 === 0) {
+    spawnParticle(cx - 13, y + DRONE_H + 2);
+    spawnParticle(cx + 13, y + DRONE_H + 2);
+  }
+
+  // 机体阴影
+  ctx.shadowColor = '#00e5ff88';
+  ctx.shadowBlur = 16;
+
+  // 机体主框
+  ctx.fillStyle = '#1a3550';
+  ctx.beginPath();
+  ctx.roundRect(x + 6, y + 7, DRONE_W - 12, DRONE_H - 10, 4);
+  ctx.fill();
+
+  // 机体中央面板
+  const bodyGrad = ctx.createLinearGradient(x, y + 5, x, y + DRONE_H);
+  bodyGrad.addColorStop(0, '#3a7aaa');
+  bodyGrad.addColorStop(1, '#0d2540');
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.roundRect(x + 8, y + 8, DRONE_W - 16, DRONE_H - 12, 3);
+  ctx.fill();
+
+  // 摄像头
+  ctx.fillStyle = '#00e5ff';
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.arc(cx, cy + 1, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#001525';
+  ctx.beginPath();
+  ctx.arc(cx, cy + 1, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // 四条旋翼臂
+  const armPositions = [
+    { ax: x + 4,         ay: y + 6 },
+    { ax: x + DRONE_W - 4, ay: y + 6 },
+  ];
+
+  ctx.strokeStyle = '#4a8ab8';
+  ctx.lineWidth = 2;
+  // 左臂
+  ctx.beginPath(); ctx.moveTo(cx - 6, cy);
+  ctx.lineTo(x + 2, y + 2); ctx.stroke();
+  // 右臂
+  ctx.beginPath(); ctx.moveTo(cx + 6, cy);
+  ctx.lineTo(x + DRONE_W - 2, y + 2); ctx.stroke();
+
+  // 旋翼（前左、前右）
+  const propTime = frameCount * 0.45;
+  drawProp(x + 2,         y + 2, 14, propTime);
+  drawProp(x + DRONE_W - 2, y + 2, 14, propTime + Math.PI);
+
+  // 指示灯
+  ctx.fillStyle = vy < 0 ? '#00ff88' : '#ff4455';
+  ctx.shadowColor = vy < 0 ? '#00ff88' : '#ff4455';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(x + DRONE_W - 10, y + 9, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawProp(cx, cy, len, angle) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.strokeStyle = 'rgba(180,230,255,0.75)';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-len / 2, 0);
+  ctx.lineTo(len / 2, 0);
+  ctx.stroke();
+  ctx.rotate(Math.PI / 2);
+  ctx.strokeStyle = 'rgba(180,230,255,0.45)';
+  ctx.beginPath();
+  ctx.moveTo(-len / 3, 0);
+  ctx.lineTo(len / 3, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ============================================================
+//  初始化
+// ============================================================
+function initGame() {
+  scrollY = 0;
+  currentHeight = 0;
+  scrollSpeed = SCROLL_BASE;
+  frameCount = 0;
+  particles = [];
+
+  generateInitialPlatforms();
+
+  // 无人机初始位置：起始平台上方
+  const startPlat = platforms[0];
+  drone = {
+    x: W / 2 - DRONE_W / 2,
+    y: startPlat.y - DRONE_H - 2,
+    vx: 0,
+    vy: 0,
+    onGround: false,
+  };
+}
+
+// ============================================================
+//  碰撞检测（只检测向下穿过平台）
+// ============================================================
+function checkPlatformCollision() {
+  if (drone.vy < 0) return; // 上升时不检测
+
+  const dBot = drone.y + DRONE_H;
+  const prevBot = dBot - drone.vy;
+
+  for (const p of platforms) {
+    if (
+      drone.x + DRONE_W > p.x + 4 &&
+      drone.x < p.x + p.w - 4 &&
+      prevBot <= p.y + 2 &&
+      dBot >= p.y
+    ) {
+      drone.y = p.y - DRONE_H;
+      drone.vy = 0;
+      drone.onGround = true;
+      playLand();
+      return;
+    }
+  }
+}
+
+// ============================================================
+//  自动跳跃
+// ============================================================
+function autoJump() {
+  if (drone.onGround) {
+    // 跳跃速度随高度加快
+    const speedFactor = 1 + currentHeight * 0.00025;
+    drone.vy = JUMP_BASE * Math.min(speedFactor, 1.6);
+    drone.onGround = false;
+    playJump();
+  }
+}
+
+// ============================================================
+//  滚动与平台管理
+// ============================================================
+function scrollWorld() {
+  // 当无人机到达屏幕上方 40% 时，开始滚动世界
+  const scrollThreshold = H * 0.38;
+
+  if (drone.y < scrollThreshold) {
+    const delta = scrollThreshold - drone.y;
+    drone.y = scrollThreshold;
+
+    for (const p of platforms) p.y += delta;
+    scrollY += delta;
+    currentHeight = Math.round(scrollY / 10);
+  }
+}
+
+function managePlatforms() {
+  // 删除屏幕底部以下的平台
+  for (let i = platforms.length - 1; i >= 0; i--) {
+    if (platforms[i].y > H + 20) platforms.splice(i, 1);
+  }
+
+  // 在顶部补充平台
+  while (true) {
+    const topPlat = platforms.reduce((a, b) => a.y < b.y ? a : b);
+    if (topPlat.y > 0) {
+      const gap = PLAT_GAP_MIN + Math.random() * (PLAT_GAP_MAX - PLAT_GAP_MIN);
+      platforms.push(makePlatform(topPlat.y - gap, false));
+    } else break;
+  }
+}
+
+// ============================================================
+//  主游戏循环
+// ============================================================
+function update() {
+  if (state !== 'running') return;
+
+  frameCount++;
+
+  // 速度递增
+  scrollSpeed = Math.min(SCROLL_BASE + frameCount * SPEED_INC, 6);
+
+  // 左右移动
+  if (keys.left)  drone.vx = -MOVE_SPEED;
+  else if (keys.right) drone.vx = MOVE_SPEED;
+  else drone.vx *= 0.82; // 缓停
+
+  // 重力
+  drone.vy += GRAVITY;
+
+  // 位移
+  drone.x += drone.vx;
+  drone.y += drone.vy;
+
+  // 水平环绕
+  if (drone.x + DRONE_W < 0)  drone.x = W;
+  if (drone.x > W)             drone.x = -DRONE_W;
+
+  // 落地检测
+  drone.onGround = false;
+  checkPlatformCollision();
+
+  // 自动跳跃
+  autoJump();
+
+  // 滚动世界
+  scrollWorld();
+  managePlatforms();
+
+  // 粒子
+  updateParticles();
+
+  // 更新高度
+  if (currentHeight > bestHeight) bestHeight = currentHeight;
+  scoreDisplay.textContent = currentHeight + ' m';
+  bestDisplay.textContent  = bestHeight + ' m';
+
+  // 里程碑音效（每50米一次）
+  if (currentHeight > 0 && currentHeight >= lastMilestone + 50) {
+    lastMilestone = Math.floor(currentHeight / 50) * 50;
+    playMilestone();
+  }
+
+  // 失败判定：无人机超出屏幕底部
+  if (drone.y > H + 60) {
+    triggerGameOver();
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  drawBackground();
+  drawParticles();
+
+  for (const p of platforms) drawPlatform(p);
+
+  if (state === 'running' || state === 'over') {
+    drawDrone(drone.x, drone.y, drone.vy);
+  }
+
+  // 速度指示
+  if (state === 'running') {
+    const ratio = (scrollSpeed - SCROLL_BASE) / (6 - SCROLL_BASE);
+    ctx.fillStyle = `rgba(255,${Math.floor(200 - 160 * ratio)},0,0.75)`;
+    ctx.fillRect(W - 10, H - 2 - (H - 60) * ratio, 6, (H - 60) * ratio);
+    // 标签
+    ctx.fillStyle = '#ffffff55';
+    ctx.font = '9px Courier New';
+    ctx.fillText('速', W - 12, H - 8);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+//  游戏开始 / 结束
+// ============================================================
+function startGame() {
+  initAudio();
+  playStart();
+  lastMilestone = 0;
+  initGame();
+  state = 'running';
+  startScreen.style.display = 'none';
+  gameOverScr.classList.remove('show');
+  scoreDisplay.textContent = '0 m';
+}
+
+function triggerGameOver() {
+  state = 'over';
+  playGameOver();
+  finalScore.textContent = currentHeight + ' m';
+  finalBest.textContent  = bestHeight + ' m';
+  gameOverScr.classList.add('show');
+}
+
+// ============================================================
+//  输入控制
+// ============================================================
+document.addEventListener('keydown', e => {
+  if (e.code === 'ArrowLeft')  { keys.left  = true; e.preventDefault(); }
+  if (e.code === 'ArrowRight') { keys.right = true; e.preventDefault(); }
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (state === 'idle' || state === 'over') startGame();
+  }
+});
+
+document.addEventListener('keyup', e => {
+  if (e.code === 'ArrowLeft')  keys.left  = false;
+  if (e.code === 'ArrowRight') keys.right = false;
+});
+
+// 点击开始/重玩
+startScreen.addEventListener('click', () => {
+  if (state === 'idle') startGame();
+});
+gameOverScr.addEventListener('click', () => {
+  if (state === 'over') startGame();
+});
+
+// 移动端触摸（简单左右分屏）
+canvas.addEventListener('touchstart', e => {
+  if (state === 'idle' || state === 'over') { startGame(); return; }
+  const tx = e.touches[0].clientX;
+  const rect = canvas.getBoundingClientRect();
+  const rx = tx - rect.left;
+  if (rx < W / 2) keys.left = true;
+  else keys.right = true;
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => {
+  keys.left = false; keys.right = false;
+});
+
+// ============================================================
+//  启动
+// ============================================================
+// 首次交互时初始化音频（绕过浏览器自动播放策略）
+document.addEventListener('click', () => { initAudio(); }, { once: true });
+document.addEventListener('keydown', () => { initAudio(); }, { once: true });
+
+initGame();
+gameLoop();
+</script>
+</body>
+</html>
