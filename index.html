@@ -707,6 +707,187 @@ function updateParticles() {
   }
 }
 
+// ============================================================
+//  障碍物系统
+// ============================================================
+function spawnHazard(platform) {
+  const type = Math.floor(Math.random() * 3); // 0=钉刺 1=激光 2=风场
+  const x = platform.x + Math.random() * (platform.w - 30);
+  hazards.push({
+    type,
+    x: x,
+    y: platform.y - 22,
+    w: 30,
+    h: 18,
+    timer: Math.random() * 120,
+    period: 80 + Math.random() * 80,
+  });
+}
+
+function spawnHazardForPlatform(platform) {
+  if (!currentZone.hazards) return;
+  if (Math.random() < 0.25) spawnHazard(platform);
+}
+
+function updateHazards() {
+  for (const h of hazards) {
+    h.timer++;
+    // 激光周期性开关
+    if (h.type === HAZ_TYPE.LASER) {
+      h.on = Math.floor(h.timer % h.period) < h.period * 0.55;
+    }
+  }
+}
+
+function drawHazards() {
+  for (const h of hazards) {
+    if (h.type === HAZ_TYPE.SPIKE) {
+      // 钉刺球
+      ctx.fillStyle = '#ff3344';
+      ctx.shadowColor = '#ff3344';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(h.x + 15, h.y + 9, 9, 0, Math.PI * 2);
+      ctx.fill();
+      // 三角形尖刺
+      ctx.fillStyle = '#ff6677';
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(h.x + 15, h.y + 9);
+        ctx.lineTo(h.x + 15 + Math.cos(angle) * 14, h.y + 9 + Math.sin(angle) * 14);
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    } else if (h.type === HAZ_TYPE.LASER) {
+      // 激光束
+      if (h.on) {
+        ctx.strokeStyle = '#ff0044';
+        ctx.shadowColor = '#ff0044';
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(h.x, h.y - 40);
+        ctx.lineTo(h.x, h.y);
+        ctx.stroke();
+        // 激光发射器
+        ctx.fillStyle = '#880022';
+        ctx.fillRect(h.x - 6, h.y - 6, 12, 8);
+        ctx.shadowBlur = 0;
+      } else {
+        // 关闭状态
+        ctx.fillStyle = '#442244';
+        ctx.fillRect(h.x - 6, h.y - 6, 12, 8);
+      }
+    } else if (h.type === HAZ_TYPE.WIND) {
+      // 风场指示
+      ctx.fillStyle = 'rgba(100,200,255,0.15)';
+      ctx.beginPath();
+      ctx.ellipse(h.x + 15, h.y + 9, 20, 40, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(100,200,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+}
+
+// ============================================================
+//  风场区域
+// ============================================================
+function updateWindZones() {
+  // 风场区域随世界滚动
+}
+
+function drawWindZones() {
+  for (const w of windZones) {
+    ctx.fillStyle = 'rgba(100,200,255,0.08)';
+    ctx.fillRect(w.x, w.y, w.w, w.h);
+    // 风向箭头
+    ctx.strokeStyle = 'rgba(100,200,255,0.25)';
+    ctx.lineWidth = 1;
+    for (let ay = w.y + 10; ay < w.y + w.h; ay += 20) {
+      ctx.beginPath();
+      ctx.moveTo(w.x + 5, ay);
+      ctx.lineTo(w.x + w.w - 5, ay);
+      ctx.stroke();
+    }
+  }
+}
+
+// ============================================================
+//  道具系统
+// ============================================================
+function spawnPowerup(platform) {
+  const x = platform.x + platform.w / 2;
+  powerups.push({
+    type: ITEM_TYPE.SHIELD,
+    x: x,
+    y: platform.y - 28,
+    vy: 0,
+    phase: 0,
+  });
+}
+
+function spawnPowerupForPlatform(platform) {
+  if (Math.random() < 0.06) spawnPowerup(platform);
+}
+
+function updatePowerups() {
+  for (const p of powerups) {
+    p.phase++;
+    // 上下浮动
+    p.y += Math.sin(p.phase * 0.08) * 0.4;
+  }
+}
+
+function drawPowerups() {
+  for (const p of powerups) {
+    const pulse = 1 + Math.sin(p.phase * 0.12) * 0.12;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(pulse, pulse);
+    // 护盾图标
+    ctx.fillStyle = '#00ffcc';
+    ctx.shadowColor = '#00ffcc';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#003322';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('S', 0, 1);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+// ============================================================
+//  护盾
+// ============================================================
+function activateShield() {
+  shieldActive = true;
+  shieldTimer = SHIELD_DURATION;
+  playShield();
+}
+
+function drawShield() {
+  if (!shieldActive) return;
+  const cx = drone.x + DRONE_W / 2;
+  const cy = drone.y + DRONE_H / 2;
+  const pulse = 1 + Math.sin(Date.now() * 0.01) * 0.05;
+  ctx.strokeStyle = '#00ffcc88';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#00ffcc';
+  ctx.shadowBlur = 16;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 28 * pulse, 18 * pulse, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
 function drawParticles() {
   for (const p of particles) {
     ctx.globalAlpha = p.life * 0.8;
@@ -830,7 +1011,7 @@ function makePlatform(y, first) {
 function generateInitialPlatforms() {
   platforms = [];
   // 底部起始平台（宽大方便落脚）
-  platforms.push({ x: W / 2 - 70, y: H - 80, w: 140, h: 14, glow: false });
+  platforms.push({ x: W / 2 - 70, y: H - 80, w: 140, h: 14, glow: false, visible: true });
   let y = H - 80;
   for (let i = 0; i < 16; i++) {
     y -= PLAT_GAP_MIN + Math.random() * (PLAT_GAP_MAX - PLAT_GAP_MIN);
@@ -1107,6 +1288,9 @@ function scrollWorld() {
     drone.y = scrollThreshold;
 
     for (const p of platforms) p.y += delta;
+    for (const h of hazards) h.y += delta;
+    for (const pw of powerups) pw.y += delta;
+    for (const w of windZones) w.y += delta;
     scrollY += delta;
     currentHeight = Math.round(scrollY / 10);
   }
@@ -1285,6 +1469,8 @@ function draw() {
   drawPowerups();
 
   if (state === 'running' || state === 'over') {
+    // DEBUG: 每60帧打印一次无人机位置
+    if (frameCount % 60 === 0) console.log('Drone at:', drone.x.toFixed(0), drone.y.toFixed(0), 'vy:', drone.vy.toFixed(2));
     drawDrone(drone.x, drone.y, drone.vy);
     if (shieldActive) drawShield();
   }
@@ -1375,6 +1561,9 @@ function startGame() {
   startScreen.style.display = 'none';
   gameOverScr.classList.remove('show');
   scoreDisplay.textContent = '0 m';
+  // DEBUG: 检查初始状态
+  console.log('Game started - drone:', drone.x, drone.y, 'platforms:', platforms.length);
+  console.log('First platform:', platforms[0]);
 }
 
 function triggerGameOver() {
