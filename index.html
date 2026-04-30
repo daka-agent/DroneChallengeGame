@@ -2,32 +2,34 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>雾都飞升：无人机挑战</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       background: #0a0a1a;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      font-family: 'Courier New', monospace;
+      margin: 0;
+      padding: 0;
       overflow: hidden;
+      width: 100vw;
+      height: 100vh;
     }
 
     #gameWrapper {
       position: relative;
-      width: 420px;
-      height: 640px;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
     }
 
     canvas {
       display: block;
-      border: 2px solid #00e5ff44;
-      border-radius: 8px;
-      box-shadow: 0 0 40px #00e5ff22, 0 0 80px #00e5ff11;
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
     }
 
     #ui-overlay {
@@ -329,8 +331,8 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-const W = canvas.width;
-const H = canvas.height;
+let W = canvas.width;
+let H = canvas.height;
 
 // ---------- DOM ----------
 const scoreDisplay = document.getElementById('scoreDisplay');
@@ -519,6 +521,12 @@ let lastMilestone = 0;
 function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // 微信/iOS 需要静音缓冲解锁
+    const buf = audioCtx.createBuffer(1, 1, 22050);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start(0);
   }
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
@@ -916,25 +924,32 @@ function drawParticles() {
 //  背景（雾都赛博朋克风）
 // ============================================================
 
-// 预生成星点
-const stars = Array.from({ length: 80 }, () => ({
-  x: Math.random() * W,
-  y: Math.random() * H,
-  r: Math.random() * 1.5 + 0.3,
-  alpha: Math.random() * 0.5 + 0.3,
-}));
+// 预生成星点（resize 时重新生成）
+let stars = [];
+function genStars() {
+  stars = Array.from({ length: 80 }, () => ({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    r: Math.random() * 1.5 + 0.3,
+    alpha: Math.random() * 0.5 + 0.3,
+  }));
+}
 
-// 建筑轮廓（固定装饰，不随平台滚动）
-const buildings = [
-  { x: 0,   w: 60,  h: 120 },
-  { x: 55,  w: 40,  h: 90  },
-  { x: 90,  w: 80,  h: 160 },
-  { x: 165, w: 50,  h: 100 },
-  { x: 210, w: 70,  h: 140 },
-  { x: 275, w: 45,  h: 80  },
-  { x: 315, w: 65,  h: 130 },
-  { x: 370, w: 50,  h: 110 },
-];
+// 建筑轮廓（resize 时重新计算）
+let buildings = [];
+function genBuildings() {
+  const scale = W / 420;  // 基于原始设计宽度缩放
+  buildings = [
+    { x: 0,         w: Math.round(60  * scale), h: Math.round(120 * scale) },
+    { x: 55 * scale,  w: Math.round(40  * scale), h: Math.round(90  * scale) },
+    { x: 90 * scale,  w: Math.round(80  * scale), h: Math.round(160 * scale) },
+    { x: 165 * scale, w: Math.round(50  * scale), h: Math.round(100 * scale) },
+    { x: 210 * scale, w: Math.round(70  * scale), h: Math.round(140 * scale) },
+    { x: 275 * scale, w: Math.round(45  * scale), h: Math.round(80  * scale) },
+    { x: 315 * scale, w: Math.round(65  * scale), h: Math.round(130 * scale) },
+    { x: 370 * scale, w: Math.round(50  * scale), h: Math.round(110 * scale) },
+  ];
+}
 
 function drawBackground() {
   // 渐变天空（随关卡区域变化）
@@ -1675,9 +1690,35 @@ canvas.addEventListener('touchstart', e => {
   e.preventDefault();
 }, { passive: false });
 
+// 阻止触摸移动时页面滚动
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+}, { passive: false });
+
 canvas.addEventListener('touchend', () => {
   keys.left = false; keys.right = false;
 });
+
+//  窗口尺寸变化处理（移动端适配核心）
+// ============================================================
+function handleResize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 重新生成与尺寸相关的静态元素
+  genStars();
+  genBuildings();
+}
+window.addEventListener('resize', handleResize);
+window.addEventListener('orientationchange', () => setTimeout(handleResize, 200));
+
+// 首次调用
+handleResize();
 
 // ============================================================
 //  启动
@@ -1685,6 +1726,7 @@ canvas.addEventListener('touchend', () => {
 // 首次交互时初始化音频（绕过浏览器自动播放策略）
 document.addEventListener('click', () => { initAudio(); }, { once: true });
 document.addEventListener('keydown', () => { initAudio(); }, { once: true });
+document.addEventListener('touchstart', () => { initAudio(); }, { once: true });
 
 initGame();
 gameLoop();
