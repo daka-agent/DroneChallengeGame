@@ -125,6 +125,8 @@
       padding: 10px 30px;
       letter-spacing: 2px;
       animation: pulse 1.4s ease-in-out infinite;
+      text-align: center;
+      line-height: 1.6;
     }
     #startScreen .tip {
       margin-top: 28px;
@@ -292,8 +294,8 @@
       <div class="drone-icon">🚁</div>
       <div class="title">雾都飞升</div>
       <div class="subtitle">无 人 机 挑 战</div>
-      <div class="start-hint">按 空格键 开始游戏</div>
-      <div class="tip">
+      <div class="start-hint" id="startHint">按 空格键 或 点击 开始游戏</div>
+      <div class="tip" id="startTip">
         ← → 方向键控制左右移动<br>
         无人机自动持续跳跃，向上爬升<br>
         跌落底部则游戏结束
@@ -318,7 +320,7 @@
           <span class="score-val best" id="finalBest">0 m</span>
         </div>
       </div>
-      <div class="restart-btn">按 空格键 重新开始</div>
+      <div class="restart-btn" id="restartHint">按 空格键 或 点击 重新开始</div>
     </div>
   </div>
 </div>
@@ -1698,6 +1700,40 @@ canvas.addEventListener('touchmove', e => {
 canvas.addEventListener('touchend', () => {
   keys.left = false; keys.right = false;
 });
+
+// PC 鼠标操控（鼠标位置控制左右）
+canvas.addEventListener('mousemove', e => {
+  if (state !== 'running') return;
+  const rect = canvas.getBoundingClientRect();
+  const rx = e.clientX - rect.left;
+  // 用比例判断，兼容 canvas 缩放
+  const ratio = rx / rect.width;
+  if (ratio < 0.45) { keys.left = true; keys.right = false; }
+  else if (ratio > 0.55) { keys.left = false; keys.right = true; }
+  else { keys.left = false; keys.right = false; }
+});
+canvas.addEventListener('mouseleave', () => {
+  keys.left = false; keys.right = false;
+});
+
+// 根据设备类型更新提示文字
+function updateHints() {
+  const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  const startH = document.getElementById('startHint');
+  const restartH = document.getElementById('restartHint');
+  const startT = document.getElementById('startTip');
+  if (hasTouch) {
+    if (startH) startH.innerHTML = '点击屏幕 或 按空格键 开始游戏';
+    if (restartH) restartH.textContent = '点击屏幕 或 按空格键 重新开始';
+    if (startT) startT.innerHTML = '← → 方向键 或 屏幕左右侧触摸 控制移动<br>无人机自动持续跳跃，向上爬升<br>跌落底部则游戏结束';
+  } else {
+    if (startH) startH.innerHTML = '点击屏幕 或 按空格键 开始游戏';
+    if (restartH) restartH.textContent = '点击屏幕 或 按空格键 重新开始';
+    if (startT) startT.innerHTML = '← → 方向键 或 鼠标左右移动 控制移动<br>无人机自动持续跳跃，向上爬升<br>跌落底部则游戏结束';
+  }
+}
+updateHints();
+
 
 //  窗口尺寸变化处理（移动端适配核心）
 // ============================================================
