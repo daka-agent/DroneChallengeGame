@@ -262,6 +262,10 @@
           <span class="score-val" id="finalScore">0 m</span>
         </div>
         <div class="score-row">
+          <span class="score-lbl">最高阶段</span>
+          <span class="score-val" id="finalStage" style="font-size:14px;">SLOW</span>
+        </div>
+        <div class="score-row">
           <span class="score-lbl">历史最高</span>
           <span class="score-val best" id="finalBest">0 m</span>
         </div>
@@ -288,20 +292,32 @@ const bestDisplay  = document.getElementById('bestDisplay');
 const startScreen  = document.getElementById('startScreen');
 const gameOverScr  = document.getElementById('gameOverScreen');
 const finalScore   = document.getElementById('finalScore');
+const finalStage   = document.getElementById('finalStage');
 const finalBest    = document.getElementById('finalBest');
 
 // ============================================================
 //  常量与配置
 // ============================================================
-const GRAVITY       = 0.38;       // 重力
+const GRAVITY_BASE  = 0.38;       // 基础重力
 const JUMP_BASE     = -10.5;      // 基础跳跃速度
+const JUMP_MAX_MULT = 2.4;        // 跳跃速度最大倍率（越高倍率越大）
 const MOVE_SPEED    = 4.2;        // 左右移动速度
-const PLAT_W_MIN    = 60;
-const PLAT_W_MAX    = 110;
+const PLAT_W_MIN    = 42;         // 平台最小宽度（高处更窄）
+const PLAT_W_MAX    = 110;        // 平台初始最大宽度
 const PLAT_GAP_MIN  = 60;         // 平台竖向最小间距
-const PLAT_GAP_MAX  = 110;        // 平台竖向最大间距
-const SPEED_INC     = 0.00015;    // 每帧速度增量（滚动速度）
+const PLAT_GAP_MAX  = 110;        // 平台初始最大间距
+const SPEED_INC     = 0.00018;    // 每帧速度增量（滚动速度）
 const SCROLL_BASE   = 1.8;        // 初始滚动速度（像素/帧）
+const SCROLL_MAX    = 7.5;        // 最大滚动速度（提高上限）
+
+// 难度阶段定义（按高度分阶段）
+const DIFFICULTY_STAGES = [
+  { height: 0,    label: 'SLOW',  color: '#00e5ff', jumpMult: 1.00, gravMult: 1.00, gapBonus: 0,  widthMult: 1.00 },
+  { height: 100,  label: 'MED',   color: '#88ff44', jumpMult: 1.25, gravMult: 1.05, gapBonus: 15, widthMult: 0.90 },
+  { height: 250,  label: 'FAST',  color: '#ffcc00', jumpMult: 1.55, gravMult: 1.10, gapBonus: 30, widthMult: 0.78 },
+  { height: 500,  label: 'MACH',  color: '#ff7700', jumpMult: 1.90, gravMult: 1.16, gapBonus: 48, widthMult: 0.65 },
+  { height: 900,  label: 'ULTRA', color: '#ff3366', jumpMult: 2.40, gravMult: 1.24, gapBonus: 65, widthMult: 0.54 },
+];
 const DRONE_W       = 44;
 const DRONE_H       = 22;
 
@@ -313,6 +329,17 @@ let bestHeight = 0;
 
 let drone, platforms, scrollY, currentHeight, scrollSpeed, frameCount;
 let keys = { left: false, right: false };
+let currentStage = DIFFICULTY_STAGES[0]; // 当前难度阶段
+let stageFlash = 0; // 阶段升级闪光计时器
+
+// 获取当前难度阶段
+function getDifficultyStage(height) {
+  let stage = DIFFICULTY_STAGES[0];
+  for (const s of DIFFICULTY_STAGES) {
+    if (height >= s.height) stage = s;
+  }
+  return stage;
+}
 
 // ============================================================
 //  音效系统（Web Audio API 程序化合成）
@@ -348,13 +375,15 @@ getToggle() && getToggle().addEventListener('click', () => {
 function playJump() {
   if (!soundEnabled || !audioCtx) return;
   const t = audioCtx.currentTime;
+  // 跳跃音调随难度阶段升高（阶段越高音越尖锐）
+  const freqBase = 400 + currentStage.jumpMult * 120;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.connect(gain); gain.connect(audioCtx.destination);
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(400, t);
-  osc.frequency.exponentialRampToValueAtTime(700, t + 0.08);
-  osc.frequency.exponentialRampToValueAtTime(300, t + 0.15);
+  osc.frequency.setValueAtTime(freqBase, t);
+  osc.frequency.exponentialRampToValueAtTime(freqBase * 1.75, t + 0.07);
+  osc.frequency.exponentialRampToValueAtTime(freqBase * 0.75, t + 0.14);
   gain.gain.setValueAtTime(0.18, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
   osc.start(t); osc.stop(t + 0.15);
@@ -546,7 +575,9 @@ function drawBackground() {
 //  平台
 // ============================================================
 function makePlatform(y, first) {
-  const w = first ? 100 : PLAT_W_MIN + Math.random() * (PLAT_W_MAX - PLAT_W_MIN);
+  const wMax = PLAT_W_MAX * currentStage.widthMult;
+  const wMin = Math.min(PLAT_W_MIN, wMax - 8);
+  const w = first ? 100 : wMin + Math.random() * (wMax - wMin);
   const x = first ? (W - w) / 2 : Math.random() * (W - w - 10) + 5;
   return { x, y, w, h: 14, glow: Math.random() > 0.6 };
 }
@@ -705,6 +736,8 @@ function initGame() {
   scrollSpeed = SCROLL_BASE;
   frameCount = 0;
   particles = [];
+  currentStage = DIFFICULTY_STAGES[0];
+  stageFlash = 0;
 
   generateInitialPlatforms();
 
@@ -749,9 +782,18 @@ function checkPlatformCollision() {
 // ============================================================
 function autoJump() {
   if (drone.onGround) {
-    // 跳跃速度随高度加快
-    const speedFactor = 1 + currentHeight * 0.00025;
-    drone.vy = JUMP_BASE * Math.min(speedFactor, 1.6);
+    // 跳跃速度 = 基础值 × 当前阶段倍率，再叠加高度平滑加速（阶段内线性过渡）
+    const stageIdx = DIFFICULTY_STAGES.indexOf(currentStage);
+    const nextStage = DIFFICULTY_STAGES[stageIdx + 1];
+    let mult;
+    if (nextStage) {
+      const progress = Math.min(1, (currentHeight - currentStage.height) / (nextStage.height - currentStage.height));
+      mult = currentStage.jumpMult + (nextStage.jumpMult - currentStage.jumpMult) * progress;
+    } else {
+      // 最高阶段后继续平滑增加，但有上限
+      mult = Math.min(currentStage.jumpMult + (currentHeight - currentStage.height) * 0.0004, JUMP_MAX_MULT);
+    }
+    drone.vy = JUMP_BASE * mult;
     drone.onGround = false;
     playJump();
   }
@@ -780,11 +822,13 @@ function managePlatforms() {
     if (platforms[i].y > H + 20) platforms.splice(i, 1);
   }
 
-  // 在顶部补充平台
+  // 在顶部补充平台（间距随难度增大）
+  const gapMin = PLAT_GAP_MIN + currentStage.gapBonus;
+  const gapMax = PLAT_GAP_MAX + currentStage.gapBonus;
   while (true) {
     const topPlat = platforms.reduce((a, b) => a.y < b.y ? a : b);
     if (topPlat.y > 0) {
-      const gap = PLAT_GAP_MIN + Math.random() * (PLAT_GAP_MAX - PLAT_GAP_MIN);
+      const gap = gapMin + Math.random() * (gapMax - gapMin);
       platforms.push(makePlatform(topPlat.y - gap, false));
     } else break;
   }
@@ -799,15 +843,23 @@ function update() {
   frameCount++;
 
   // 速度递增
-  scrollSpeed = Math.min(SCROLL_BASE + frameCount * SPEED_INC, 6);
+  scrollSpeed = Math.min(SCROLL_BASE + frameCount * SPEED_INC, SCROLL_MAX);
+
+  // 更新难度阶段
+  const newStage = getDifficultyStage(currentHeight);
+  if (newStage !== currentStage) {
+    currentStage = newStage;
+    stageFlash = 30; // 触发30帧闪光
+    playMilestone();  // 播放里程碑音效庆祝升阶
+  }
 
   // 左右移动
   if (keys.left)  drone.vx = -MOVE_SPEED;
   else if (keys.right) drone.vx = MOVE_SPEED;
   else drone.vx *= 0.82; // 缓停
 
-  // 重力
-  drone.vy += GRAVITY;
+  // 重力（随难度阶段轻微增加）
+  drone.vy += GRAVITY_BASE * currentStage.gravMult;
 
   // 位移
   drone.x += drone.vx;
@@ -860,15 +912,62 @@ function draw() {
     drawDrone(drone.x, drone.y, drone.vy);
   }
 
-  // 速度指示
+  // 阶段升级闪光
+  if (stageFlash > 0) {
+    const alpha = (stageFlash / 30) * 0.35;
+    ctx.fillStyle = currentStage.color;
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+    stageFlash--;
+
+    // 阶段标签大字提示
+    if (stageFlash > 10) {
+      ctx.save();
+      ctx.font = `bold ${32 + stageFlash}px Courier New`;
+      ctx.fillStyle = currentStage.color;
+      ctx.globalAlpha = stageFlash / 30;
+      ctx.shadowColor = currentStage.color;
+      ctx.shadowBlur = 20;
+      ctx.textAlign = 'center';
+      ctx.fillText('▲ ' + currentStage.label + ' ▲', W / 2, H / 2 - 20);
+      ctx.font = '16px Courier New';
+      ctx.fillText('速度提升！', W / 2, H / 2 + 20);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  }
+
+  // 速度指示条（右侧竖条 + 阶段标签）
   if (state === 'running') {
-    const ratio = (scrollSpeed - SCROLL_BASE) / (6 - SCROLL_BASE);
-    ctx.fillStyle = `rgba(255,${Math.floor(200 - 160 * ratio)},0,0.75)`;
-    ctx.fillRect(W - 10, H - 2 - (H - 60) * ratio, 6, (H - 60) * ratio);
-    // 标签
-    ctx.fillStyle = '#ffffff55';
-    ctx.font = '9px Courier New';
-    ctx.fillText('速', W - 12, H - 8);
+    const ratio = (scrollSpeed - SCROLL_BASE) / (SCROLL_MAX - SCROLL_BASE);
+    const barH = (H - 80) * ratio;
+    const barY = H - 40 - barH;
+
+    // 颜色渐变：随阶段变化
+    const stageColor = currentStage.color;
+    ctx.fillStyle = stageColor + 'bb';
+    ctx.fillRect(W - 10, barY, 6, barH);
+
+    // 顶部发光圆点
+    ctx.beginPath();
+    ctx.arc(W - 7, barY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = stageColor;
+    ctx.shadowColor = stageColor;
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 阶段标签（旋转竖排）
+    ctx.save();
+    ctx.translate(W - 7, H - 20);
+    ctx.rotate(-Math.PI / 2);
+    ctx.font = 'bold 9px Courier New';
+    ctx.fillStyle = stageColor;
+    ctx.textAlign = 'center';
+    ctx.fillText(currentStage.label, 0, 0);
+    ctx.restore();
   }
 }
 
@@ -896,6 +995,9 @@ function triggerGameOver() {
   state = 'over';
   playGameOver();
   finalScore.textContent = currentHeight + ' m';
+  finalStage.textContent = currentStage.label;
+  finalStage.style.color = currentStage.color;
+  finalStage.style.textShadow = `0 0 8px ${currentStage.color}`;
   finalBest.textContent  = bestHeight + ' m';
   gameOverScr.classList.add('show');
 }
