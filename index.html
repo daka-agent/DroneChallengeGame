@@ -1469,8 +1469,6 @@ function draw() {
   drawPowerups();
 
   if (state === 'running' || state === 'over') {
-    // DEBUG: 每60帧打印一次无人机位置
-    if (frameCount % 60 === 0) console.log('Drone at:', drone.x.toFixed(0), drone.y.toFixed(0), 'vy:', drone.vy.toFixed(2));
     drawDrone(drone.x, drone.y, drone.vy);
     if (shieldActive) drawShield();
   }
@@ -1561,9 +1559,6 @@ function startGame() {
   startScreen.style.display = 'none';
   gameOverScr.classList.remove('show');
   scoreDisplay.textContent = '0 m';
-  // DEBUG: 检查初始状态
-  console.log('Game started - drone:', drone.x, drone.y, 'platforms:', platforms.length);
-  console.log('First platform:', platforms[0]);
 }
 
 function triggerGameOver() {
