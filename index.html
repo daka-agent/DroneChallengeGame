@@ -217,6 +217,46 @@
       25%       { transform: translateX(-6px); }
       75%       { transform: translateX(6px); }
     }
+
+    /* 关卡区域公告 */
+    #zoneAnnounce {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 22px;
+      font-weight: bold;
+      letter-spacing: 6px;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      text-transform: uppercase;
+    }
+    #zoneAnnounce.show {
+      animation: zoneAnim 2.5s ease forwards;
+    }
+    @keyframes zoneAnim {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+      15%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+      30%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+      70%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+    }
+
+    /* HUD 区域标签 */
+    #zoneDisplay {
+      position: absolute;
+      top: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      letter-spacing: 3px;
+      padding: 2px 10px;
+      border-radius: 10px;
+      opacity: 0.85;
+      pointer-events: none;
+      transition: color 0.5s, background 0.5s;
+    }
   </style>
 </head>
 <body>
@@ -238,6 +278,12 @@
 
     <!-- 音效开关 -->
     <div id="soundToggle" title="音效开关">🔊</div>
+
+    <!-- 关卡区域标签（运行时显示） -->
+    <div id="zoneDisplay"></div>
+
+    <!-- 关卡区域公告（过渡时显示） -->
+    <div id="zoneAnnounce"></div>
 
     <!-- 开始界面 -->
     <div id="startScreen">
@@ -318,6 +364,88 @@ const DIFFICULTY_STAGES = [
   { height: 500,  label: 'MACH',  color: '#ff7700', jumpMult: 1.90, gravMult: 1.16, gapBonus: 48, widthMult: 0.65 },
   { height: 900,  label: 'ULTRA', color: '#ff3366', jumpMult: 2.40, gravMult: 1.24, gapBonus: 65, widthMult: 0.54 },
 ];
+
+// ============================================================
+//  关卡区域定义（按高度划分主题区）
+// ============================================================
+const ZONES = [
+  {
+    name: '城市区',
+    sub: 'URBAN ZONE',
+    height: 0,
+    color: '#00e5ff',
+    bgTop: '#05050f',
+    bgBot: '#1a2a50',
+    platColor: ['#3a6ea8', '#1a3a5c'],
+    platGlow: '#00c8ff',
+    hazards: false,
+    moving: 0.10,
+    special: 0,
+  },
+  {
+    name: '工业区',
+    sub: 'INDUSTRIAL ZONE',
+    height: 300,
+    color: '#ff9900',
+    bgTop: '#0a0805',
+    bgBot: '#2a1a08',
+    platColor: ['#a06020', '#5a2c0a'],
+    platGlow: '#ff8800',
+    hazards: false,
+    moving: 0.35,
+    special: 0.15,
+  },
+  {
+    name: '云层区',
+    sub: 'CLOUD ZONE',
+    height: 700,
+    color: '#cc88ff',
+    bgTop: '#0d0520',
+    bgBot: '#2a1545',
+    platColor: ['#8855cc', '#3a1a6a'],
+    platGlow: '#bb66ff',
+    hazards: true,
+    moving: 0.50,
+    special: 0.28,
+  },
+  {
+    name: '风暴区',
+    sub: 'STORM ZONE',
+    height: 1200,
+    color: '#ff3366',
+    bgTop: '#0d0008',
+    bgBot: '#25001a',
+    platColor: ['#cc2255', '#550022'],
+    platGlow: '#ff0055',
+    hazards: true,
+    moving: 0.65,
+    special: 0.40,
+  },
+];
+
+// 平台类型
+const PLAT_TYPE = {
+  NORMAL: 0,
+  MOVING: 1,
+  ICE: 2,
+  BREAKABLE: 3,
+};
+
+// 障碍物类型
+const HAZ_TYPE = {
+  SPIKE: 0,
+  LASER: 1,
+  WIND: 2,
+};
+
+// 道具类型
+const ITEM_TYPE = {
+  SHIELD: 0,
+  MAGNET: 1,
+};
+
+// 道具持续时间
+const SHIELD_DURATION = 8000; // 8秒护盾
 const DRONE_W       = 44;
 const DRONE_H       = 22;
 
@@ -332,6 +460,17 @@ let keys = { left: false, right: false };
 let currentStage = DIFFICULTY_STAGES[0]; // 当前难度阶段
 let stageFlash = 0; // 阶段升级闪光计时器
 
+// 新增游戏对象
+let hazards = [];      // 危险物数组
+let powerups = [];     // 道具数组
+let windZones = [];    // 风场区域
+let currentZone = ZONES[0]; // 当前关卡区域
+let zoneAnnounceTimer = 0;   // 区域公告计时器
+let shieldActive = false;    // 护盾状态
+let shieldTimer = 0;         // 护盾剩余时间
+let iceTimer = 0;            // 冰面计时器（冰面上减速停止感）
+let announceId = 0;          // 公告编号（防重复触发）
+
 // 获取当前难度阶段
 function getDifficultyStage(height) {
   let stage = DIFFICULTY_STAGES[0];
@@ -339,6 +478,35 @@ function getDifficultyStage(height) {
     if (height >= s.height) stage = s;
   }
   return stage;
+}
+
+// 获取当前关卡区域
+function getCurrentZone(height) {
+  let zone = ZONES[0];
+  for (const z of ZONES) {
+    if (height >= z.height) zone = z;
+  }
+  return zone;
+}
+
+// 显示区域公告
+function showZoneAnnounce(zone) {
+  announceId++;
+  const el = document.getElementById('zoneAnnounce');
+  el.textContent = zone.name;
+  el.style.color = zone.color;
+  el.style.textShadow = `0 0 20px ${zone.color}, 0 0 40px ${zone.color}66`;
+  el.classList.remove('show');
+  void el.offsetWidth; // 强制重绘
+  el.classList.add('show');
+  zoneAnnounceTimer = 150; // 约2.5秒
+
+  // 更新 HUD 区域标签
+  const zEl = document.getElementById('zoneDisplay');
+  zEl.textContent = zone.sub;
+  zEl.style.color = zone.color;
+  zEl.style.background = zone.color + '22';
+  zEl.style.border = `1px solid ${zone.color}66`;
 }
 
 // ============================================================
@@ -466,6 +634,54 @@ function playStart() {
   });
 }
 
+function playShield() {
+  if (!soundEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  [800, 1200, 1600].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const st = t + i * 0.06;
+    gain.gain.setValueAtTime(0.15, st);
+    gain.gain.exponentialRampToValueAtTime(0.001, st + 0.2);
+    osc.start(st); osc.stop(st + 0.2);
+  });
+}
+
+function playBreak() {
+  if (!soundEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  const bufSize = Math.floor(audioCtx.sampleRate * 0.12);
+  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = 'bandpass'; filt.frequency.value = 600; filt.Q.value = 1;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.18, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+  src.start(t);
+}
+
+function playIce() {
+  if (!soundEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(2000, t);
+  osc.frequency.exponentialRampToValueAtTime(800, t + 0.1);
+  gain.gain.setValueAtTime(0.06, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  osc.start(t); osc.stop(t + 0.1);
+}
+
 // ============================================================
 //  粒子系统（推进器尾焰）
 // ============================================================
@@ -529,11 +745,11 @@ const buildings = [
 ];
 
 function drawBackground() {
-  // 渐变天空
+  // 渐变天空（随关卡区域变化）
   const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#05050f');
-  sky.addColorStop(0.6, '#0d1535');
-  sky.addColorStop(1, '#1a2a50');
+  sky.addColorStop(0, currentZone.bgTop);
+  sky.addColorStop(0.6, currentZone.bgBot);
+  sky.addColorStop(1, currentZone.color + '22');
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, H);
 
@@ -547,19 +763,18 @@ function drawBackground() {
   }
   ctx.globalAlpha = 1;
 
-  // 雾气渐变
+  // 雾气渐变（随区域变化）
   const fog = ctx.createLinearGradient(0, H * 0.55, 0, H);
   fog.addColorStop(0, 'rgba(20,40,80,0)');
-  fog.addColorStop(1, 'rgba(10,20,50,0.65)');
+  fog.addColorStop(1, currentZone.color + '22');
   ctx.fillStyle = fog;
   ctx.fillRect(0, H * 0.55, W, H * 0.45);
 
-  // 建筑轮廓
-  ctx.fillStyle = '#080c20';
+  // 建筑轮廓（随区域变化）
+  ctx.fillStyle = currentZone.bgTop;
   for (const b of buildings) {
     ctx.fillRect(b.x, H - b.h, b.w, b.h);
-    // 窗户
-    ctx.fillStyle = '#00e5ff18';
+    ctx.fillStyle = currentZone.color + '12';
     for (let wy = H - b.h + 10; wy < H - 10; wy += 18) {
       for (let wx = b.x + 8; wx < b.x + b.w - 8; wx += 14) {
         if (Math.random() > 0.4) {
@@ -567,7 +782,19 @@ function drawBackground() {
         }
       }
     }
-    ctx.fillStyle = '#080c20';
+    ctx.fillStyle = currentZone.bgTop;
+  }
+
+  // 风暴区额外闪电效果
+  if (currentZone.name === '风暴区' && state === 'running') {
+    if (Math.random() < 0.008) {
+      ctx.strokeStyle = '#ffffffaa';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.random() * W, 0);
+      ctx.lineTo(Math.random() * W, H * 0.4);
+      ctx.stroke();
+    }
   }
 }
 
@@ -579,7 +806,25 @@ function makePlatform(y, first) {
   const wMin = Math.min(PLAT_W_MIN, wMax - 8);
   const w = first ? 100 : wMin + Math.random() * (wMax - wMin);
   const x = first ? (W - w) / 2 : Math.random() * (W - w - 10) + 5;
-  return { x, y, w, h: 14, glow: Math.random() > 0.6 };
+
+  // 根据当前区域的特殊平台概率决定平台类型
+  let platType = PLAT_TYPE.NORMAL;
+  if (!first && currentZone.special > 0 && Math.random() < currentZone.special) {
+    const roll = Math.random();
+    if (roll < 0.45) platType = PLAT_TYPE.MOVING;
+    else if (roll < 0.75) platType = PLAT_TYPE.BREAKABLE;
+    else platType = PLAT_TYPE.ICE;
+  }
+
+  return {
+    x, y, w, h: 14, glow: Math.random() > 0.6,
+    type: platType,
+    originX: x,            // 移动平台的原始X
+    vx: platType === PLAT_TYPE.MOVING ? (Math.random() > 0.5 ? 1.2 : -1.2) : 0,
+    breakTimer: platType === PLAT_TYPE.BREAKABLE ? 120 : 0, // 2秒后消失（60帧/秒）
+    blinkTimer: 0,         // 闪烁计时
+    visible: true,
+  };
 }
 
 function generateInitialPlatforms() {
@@ -594,41 +839,82 @@ function generateInitialPlatforms() {
 }
 
 function drawPlatform(p) {
+  if (!p.visible) return;
+
+  // 平台不可见时直接返回
+  const blinkAlpha = p.breakTimer > 0 && p.breakTimer < 40
+    ? (Math.floor(p.breakTimer / 4) % 2 === 0 ? 0.3 : 1.0)
+    : 1.0;
+  ctx.globalAlpha = blinkAlpha;
+
   // 平台底部阴影
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.fillRect(p.x + 4, p.y + p.h, p.w - 8, 6);
 
-  // 平台主体渐变
+  // 平台主体渐变（根据类型变色）
   const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
-  if (p.glow) {
-    grad.addColorStop(0, '#00c8ff');
-    grad.addColorStop(1, '#005580');
-  } else {
-    grad.addColorStop(0, '#3a6ea8');
-    grad.addColorStop(1, '#1a3a5c');
+  let topColor, botColor, glowColor;
+  switch (p.type) {
+    case PLAT_TYPE.MOVING:
+      topColor = '#00ccff'; botColor = '#004466'; glowColor = '#00e5ff';
+      break;
+    case PLAT_TYPE.ICE:
+      topColor = '#aaeeff'; botColor = '#336688'; glowColor = '#88ddff';
+      break;
+    case PLAT_TYPE.BREAKABLE:
+      topColor = currentZone.color; botColor = '#552200'; glowColor = '#ff6600';
+      break;
+    default:
+      topColor = p.glow ? currentZone.platGlow : currentZone.platColor[0];
+      botColor = currentZone.platColor[1];
+      glowColor = currentZone.platGlow;
   }
+  grad.addColorStop(0, topColor);
+  grad.addColorStop(1, botColor);
   ctx.fillStyle = grad;
   ctx.beginPath();
   ctx.roundRect(p.x, p.y, p.w, p.h, 4);
   ctx.fill();
 
+  // 冰面平台特殊效果
+  if (p.type === PLAT_TYPE.ICE) {
+    ctx.fillStyle = 'rgba(200,240,255,0.3)';
+    ctx.beginPath();
+    ctx.roundRect(p.x + 2, p.y + 1, p.w - 4, 5, 2);
+    ctx.fill();
+  }
+
+  // 消失平台警告条纹
+  if (p.type === PLAT_TYPE.BREAKABLE && p.breakTimer > 0 && p.breakTimer < 60) {
+    ctx.strokeStyle = '#ff0000aa';
+    ctx.lineWidth = 2;
+    for (let sx = p.x; sx < p.x + p.w; sx += 10) {
+      ctx.beginPath();
+      ctx.moveTo(sx, p.y);
+      ctx.lineTo(sx + 6, p.y + p.h);
+      ctx.stroke();
+    }
+  }
+
   // 顶部高光
-  ctx.fillStyle = p.glow ? 'rgba(150,240,255,0.55)' : 'rgba(180,210,255,0.25)';
+  ctx.fillStyle = topColor + '88';
   ctx.beginPath();
   ctx.roundRect(p.x + 2, p.y + 1, p.w - 4, 4, 2);
   ctx.fill();
 
   // 发光描边
-  if (p.glow) {
-    ctx.shadowColor = '#00e5ff';
-    ctx.shadowBlur = 12;
-    ctx.strokeStyle = '#00e5ffcc';
+  if (p.glow || p.type !== PLAT_TYPE.NORMAL) {
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = topColor + 'cc';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(p.x, p.y, p.w, p.h, 4);
     ctx.stroke();
     ctx.shadowBlur = 0;
   }
+
+  ctx.globalAlpha = 1;
 }
 
 // ============================================================
@@ -738,6 +1024,15 @@ function initGame() {
   particles = [];
   currentStage = DIFFICULTY_STAGES[0];
   stageFlash = 0;
+  currentZone = ZONES[0];
+  zoneAnnounceTimer = 0;
+  hazards = [];
+  powerups = [];
+  windZones = [];
+  shieldActive = false;
+  shieldTimer = 0;
+  announceId = 0;
+  lastMilestone = 0;
 
   generateInitialPlatforms();
 
@@ -772,6 +1067,7 @@ function checkPlatformCollision() {
       drone.vy = 0;
       drone.onGround = true;
       playLand();
+      if (p.type === PLAT_TYPE.ICE) playIce();
       return;
     }
   }
@@ -817,9 +1113,18 @@ function scrollWorld() {
 }
 
 function managePlatforms() {
-  // 删除屏幕底部以下的平台
+  // 删除屏幕底部以下的平台、障碍物、道具
   for (let i = platforms.length - 1; i >= 0; i--) {
     if (platforms[i].y > H + 20) platforms.splice(i, 1);
+  }
+  for (let i = hazards.length - 1; i >= 0; i--) {
+    if (hazards[i].y > H + 50) hazards.splice(i, 1);
+  }
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    if (powerups[i].y > H + 50) powerups.splice(i, 1);
+  }
+  for (let i = windZones.length - 1; i >= 0; i--) {
+    if (windZones[i].y > H + 50) windZones.splice(i, 1);
   }
 
   // 在顶部补充平台（间距随难度增大）
@@ -829,7 +1134,11 @@ function managePlatforms() {
     const topPlat = platforms.reduce((a, b) => a.y < b.y ? a : b);
     if (topPlat.y > 0) {
       const gap = gapMin + Math.random() * (gapMax - gapMin);
-      platforms.push(makePlatform(topPlat.y - gap, false));
+      const newPlat = makePlatform(topPlat.y - gap, false);
+      platforms.push(newPlat);
+      // 在该平台生成障碍物或道具
+      spawnHazardForPlatform(newPlat);
+      spawnPowerupForPlatform(newPlat);
     } else break;
   }
 }
@@ -849,14 +1158,43 @@ function update() {
   const newStage = getDifficultyStage(currentHeight);
   if (newStage !== currentStage) {
     currentStage = newStage;
-    stageFlash = 30; // 触发30帧闪光
-    playMilestone();  // 播放里程碑音效庆祝升阶
+    stageFlash = 30;
+    playMilestone();
+  }
+
+  // 更新关卡区域
+  const newZone = getCurrentZone(currentHeight);
+  if (newZone !== currentZone) {
+    currentZone = newZone;
+    showZoneAnnounce(newZone);
+  }
+
+  // 公告计时器
+  if (zoneAnnounceTimer > 0) zoneAnnounceTimer--;
+
+  // 护盾计时器
+  if (shieldActive) {
+    shieldTimer -= 16.67; // 约60fps
+    if (shieldTimer <= 0) { shieldActive = false; shieldTimer = 0; }
+  }
+
+  // 冰面摩擦（冰面平台额外减速）
+  let frictionMult = 0.82;
+  for (const p of platforms) {
+    if (p.type === PLAT_TYPE.ICE && drone.onGround) {
+      const onThis = (
+        drone.x + DRONE_W > p.x + 4 &&
+        drone.x < p.x + p.w - 4 &&
+        Math.abs(drone.y + DRONE_H - p.y) < 6
+      );
+      if (onThis) frictionMult = 0.95; // 更滑，减速更慢
+    }
   }
 
   // 左右移动
   if (keys.left)  drone.vx = -MOVE_SPEED;
   else if (keys.right) drone.vx = MOVE_SPEED;
-  else drone.vx *= 0.82; // 缓停
+  else drone.vx *= frictionMult; // 缓停（冰面更滑）
 
   // 重力（随难度阶段轻微增加）
   drone.vy += GRAVITY_BASE * currentStage.gravMult;
@@ -873,12 +1211,47 @@ function update() {
   drone.onGround = false;
   checkPlatformCollision();
 
+  // 移动平台逻辑
+  for (const p of platforms) {
+    if (p.type === PLAT_TYPE.MOVING && p.visible) {
+      p.x += p.vx;
+      // 碰到边界反弹
+      if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); }
+      if (p.x + p.w > W) { p.x = W - p.w; p.vx = -Math.abs(p.vx); }
+      // 同步更新无人机位置（当无人机在平台上时）
+      if (drone.onGround && Math.abs(drone.y + DRONE_H - p.y) < 8) {
+        if (drone.x + DRONE_W > p.x && drone.x < p.x + p.w) {
+          drone.x += p.vx;
+        }
+      }
+    }
+
+    // 断裂平台倒计时
+    if (p.type === PLAT_TYPE.BREAKABLE && p.breakTimer > 0 && drone.onGround) {
+      const onThis = (
+        drone.x + DRONE_W > p.x + 4 &&
+        drone.x < p.x + p.w - 4 &&
+        Math.abs(drone.y + DRONE_H - p.y) < 8
+      );
+      if (onThis) p.breakTimer--;
+      if (p.breakTimer <= 0) {
+        p.visible = false;
+        playBreak();
+      }
+    }
+  }
+
   // 自动跳跃
   autoJump();
 
   // 滚动世界
   scrollWorld();
   managePlatforms();
+
+  // 更新障碍物
+  updateHazards();
+  updateWindZones();
+  updatePowerups();
 
   // 粒子
   updateParticles();
@@ -905,11 +1278,24 @@ function draw() {
 
   drawBackground();
   drawParticles();
+  drawWindZones();
 
   for (const p of platforms) drawPlatform(p);
+  drawHazards();
+  drawPowerups();
 
   if (state === 'running' || state === 'over') {
     drawDrone(drone.x, drone.y, drone.vy);
+    if (shieldActive) drawShield();
+  }
+
+  // 护盾计时条（顶部）
+  if (shieldActive && shieldTimer > 0) {
+    const ratio = shieldTimer / SHIELD_DURATION;
+    ctx.fillStyle = '#00ffcc66';
+    ctx.fillRect(0, 0, W * ratio, 3);
+    ctx.fillStyle = '#00ffcc';
+    ctx.fillRect(0, 0, W * ratio, 2);
   }
 
   // 阶段升级闪光
