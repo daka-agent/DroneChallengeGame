@@ -713,15 +713,26 @@ function updateParticles() {
 function spawnHazard(platform) {
   const type = Math.floor(Math.random() * 3); // 0=钉刺 1=激光 2=风场
   const x = platform.x + Math.random() * (platform.w - 30);
+  const hx = x;
   hazards.push({
     type,
-    x: x,
+    x: hx,
     y: platform.y - 22,
     w: 30,
     h: 18,
     timer: Math.random() * 120,
     period: 80 + Math.random() * 80,
   });
+  // 风场同时加入专用数组，用于推力效果和绘制
+  if (type === HAZ_TYPE.WIND) {
+    windZones.push({
+      x: platform.x,
+      y: platform.y - 120,
+      w: platform.w,
+      h: 110,
+      strength: (Math.random() > 0.5 ? 1 : -1) * (0.1 + Math.random() * 0.1),
+    });
+  }
 }
 
 function spawnHazardForPlatform(platform) {
@@ -1435,7 +1446,63 @@ function update() {
   // 更新障碍物
   updateHazards();
   updateWindZones();
+
+  // 风场推力效果
+  for (const w of windZones) {
+    if (
+      drone.x + DRONE_W > w.x &&
+      drone.x < w.x + w.w &&
+      drone.y + DRONE_H > w.y &&
+      drone.y < w.y + w.h
+    ) {
+      drone.vx += w.strength || 0.15; // 横向风推力
+    }
+  }
+
   updatePowerups();
+
+  // 道具碰撞检测
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const pw = powerups[i];
+    // AABB碰撞检测（道具宽约18px，高约18px）
+    if (
+      drone.x + DRONE_W > pw.x - 9 &&
+      drone.x < pw.x + 9 &&
+      drone.y + DRONE_H > pw.y - 9 &&
+      drone.y < pw.y + 9
+    ) {
+      activateShield();
+      powerups.splice(i, 1);
+    }
+  }
+
+  // 障碍物碰撞检测
+  for (const h of hazards) {
+    let hit = false;
+    if (h.type === HAZ_TYPE.SPIKE) {
+      // 尖刺：圆形碰撞
+      const hx = h.x + 15, hy = h.y + 9, hr = 8;
+      const dx = (drone.x + DRONE_W / 2) - hx;
+      const dy = (drone.y + DRONE_H / 2) - hy;
+      hit = Math.sqrt(dx * dx + dy * dy) < hr + 12;
+    } else if (h.type === HAZ_TYPE.LASER) {
+      // 激光：矩形碰撞（只在开启时）
+      if (h.on) {
+        hit = (
+          drone.x + DRONE_W > h.x - 4 &&
+          drone.x < h.x + 4 &&
+          drone.y < h.y &&
+          drone.y + DRONE_H > h.y - 40
+        );
+      }
+    }
+    if (hit) {
+      if (!shieldActive) {
+        triggerGameOver();
+        return;
+      }
+    }
+  }
 
   // 粒子
   updateParticles();
