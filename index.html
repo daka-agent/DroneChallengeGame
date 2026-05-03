@@ -1992,9 +1992,13 @@ function openRankModal() {
   renderRankings();
   document.getElementById('rankNameInput').value = getPilotName() || '';
   document.getElementById('rankModal').classList.add('show');
+  // 阻断下层元素接收触摸/点击事件（修复手机端穿透问题）
+  document.getElementById('gameOverScreen').style.pointerEvents = 'none';
 }
 function closeRankModal() {
   document.getElementById('rankModal').classList.remove('show');
+  // 恢复下层元素的事件接收
+  document.getElementById('gameOverScreen').style.pointerEvents = '';
 }
 
 function initRankUI() {
