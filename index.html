@@ -325,6 +325,7 @@
       z-index: 9999;
       align-items: center;
       justify-content: center;
+      pointer-events: auto;
     }
     #rankModal.show { display: flex; }
     #rankBox {
@@ -335,6 +336,7 @@
       width: min(90vw, 360px);
       max-height: 80vh;
       overflow-y: auto;
+      pointer-events: auto;
     }
     #rankTitle {
       color: #00e5ff;
@@ -459,18 +461,19 @@
       </div>
     </div>
 
-    <!-- 排行榜模态框 -->
-    <div id="rankModal">
-      <div id="rankBox">
-        <div id="rankTitle">🏆 本机排行榜</div>
-        <div id="rankList"></div>
-        <div id="rankEditName">
-          修改名称：<input id="rankNameInput" type="text" maxlength="10" autocomplete="off">
-          <button id="rankNameSaveBtn" style="color:#00e5ff;background:none;border:1px solid #00e5ff44;border-radius:5px;padding:2px 8px;cursor:pointer;">保存</button>
-        </div>
-        <button id="rankCloseBtn">关闭</button>
-      </div>
+  </div>
+</div>
+
+<!-- 排行榜模态框（必须在 ui-overlay 外部，否则 pointer-events:none 会屏蔽点击） -->
+<div id="rankModal">
+  <div id="rankBox">
+    <div id="rankTitle">🏆 本机排行榜</div>
+    <div id="rankList"></div>
+    <div id="rankEditName">
+      修改名称：<input id="rankNameInput" type="text" maxlength="10" autocomplete="off">
+      <button id="rankNameSaveBtn" style="color:#00e5ff;background:none;border:1px solid #00e5ff44;border-radius:5px;padding:2px 8px;cursor:pointer;">保存</button>
     </div>
+    <button id="rankCloseBtn">关闭</button>
   </div>
 </div>
 
@@ -1995,29 +1998,45 @@ function closeRankModal() {
 }
 
 function initRankUI() {
+  const modal = document.getElementById('rankModal');
+  const closeBtn = document.getElementById('rankCloseBtn');
+  const saveBtn = document.getElementById('rankNameSaveBtn');
+  const rankNI = document.getElementById('rankNameInput');
+
+  // 排行榜按钮：打开模态框
   document.getElementById('rankBtn').addEventListener('click', e => {
-    e.stopPropagation();
+    e.stopPropagation(); e.preventDefault();
     openRankModal();
   });
-  document.getElementById('rankCloseBtn').addEventListener('click', e => {
-    e.stopPropagation();
-    closeRankModal();
-  });
-  // 点击模态框遮罩关闭
-  document.getElementById('rankModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('rankModal')) closeRankModal();
-  });
-  const rankNI = document.getElementById('rankNameInput');
-  rankNI.addEventListener('keydown', e => e.stopPropagation());
-  rankNI.addEventListener('click',   e => e.stopPropagation());
-  document.getElementById('rankNameSaveBtn').addEventListener('click', e => {
-    e.stopPropagation();
+
+  // 关闭按钮（同时绑定 click 和 touchstart，确保手机端响应）
+  const doClose = e => { if (e) { e.stopPropagation(); e.preventDefault(); } closeRankModal(); };
+  closeBtn.addEventListener('click', doClose);
+  closeBtn.addEventListener('touchstart', doClose, { passive: false });
+
+  // 点击模态框遮罩关闭（手机端用 touchstart 阻止穿透）
+  const onModalBg = e => {
+    if (e.target === modal) { e.stopPropagation(); e.preventDefault(); closeRankModal(); }
+  };
+  modal.addEventListener('click', onModalBg);
+  modal.addEventListener('touchstart', onModalBg, { passive: false });
+
+  // 保存昵称按钮
+  const doSave = e => {
+    e.stopPropagation(); e.preventDefault();
     const v = rankNI.value.trim();
     if (!v) return;
     savePilotName(v);
     renderRankings();
     updateHUDPilotName();
-  });
+  };
+  saveBtn.addEventListener('click', doSave);
+  saveBtn.addEventListener('touchstart', doSave, { passive: false });
+
+  // 阻止输入框的触摸/键盘事件冒泡到游戏
+  rankNI.addEventListener('keydown',   e => e.stopPropagation());
+  rankNI.addEventListener('click',     e => e.stopPropagation());
+  rankNI.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
 }
 
 // ── 分享成绩 ─────────────────────────────────────────────────
