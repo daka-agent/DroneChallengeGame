@@ -1802,8 +1802,10 @@ function draw() {
 }
 
 function gameLoop() {
-  update();
-  draw();
+  if (!document.getElementById('rankModal').classList.contains('show')) {
+    update();
+    draw();
+  }
   requestAnimationFrame(gameLoop);
 }
 
@@ -1837,6 +1839,7 @@ function triggerGameOver() {
 //  输入控制
 // ============================================================
 document.addEventListener('keydown', e => {
+  if (document.getElementById('rankModal').classList.contains('show')) return;
   if (e.code === 'ArrowLeft')  { keys.left  = true; e.preventDefault(); }
   if (e.code === 'ArrowRight') { keys.right = true; e.preventDefault(); }
   if (e.code === 'Space') {
@@ -1852,14 +1855,17 @@ document.addEventListener('keyup', e => {
 
 // 点击开始/重玩
 startScreen.addEventListener('click', () => {
+  if (document.getElementById('rankModal').classList.contains('show')) return;
   if (state === 'idle') startGame();
 });
 gameOverScr.addEventListener('click', () => {
+  if (document.getElementById('rankModal').classList.contains('show')) return;
   if (state === 'over') startGame();
 });
 
 // 移动端触摸（简单左右分屏）
 canvas.addEventListener('touchstart', e => {
+  if (document.getElementById('rankModal').classList.contains('show')) { e.preventDefault(); return; }
   if (state === 'idle' || state === 'over') { startGame(); return; }
   const tx = e.touches[0].clientX;
   const rect = canvas.getBoundingClientRect();
