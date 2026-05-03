@@ -261,6 +261,131 @@
       pointer-events: none;
       transition: color 0.5s, background 0.5s;
     }
+
+    /* ── 昵称输入区 ───────────────────────── */
+    #nicknameArea {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    #nicknameInput {
+      background: rgba(0,0,0,0.6);
+      border: 1px solid #00e5ff88;
+      border-radius: 6px;
+      color: #00e5ff;
+      font-size: 14px;
+      padding: 5px 10px;
+      width: 120px;
+      outline: none;
+    }
+    #nicknameInput::placeholder { color: #00e5ff44; }
+    #nicknameSaveBtn {
+      background: #00e5ff22;
+      border: 1px solid #00e5ff88;
+      border-radius: 6px;
+      color: #00e5ff;
+      font-size: 13px;
+      padding: 5px 12px;
+      cursor: pointer;
+    }
+
+    /* ── 游戏结束：额外按钮行 ──────────────── */
+    #overBtnRow {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .over-action-btn {
+      background: rgba(0,0,0,0.5);
+      border: 1px solid #00e5ff66;
+      border-radius: 20px;
+      color: #00e5ff;
+      font-size: 13px;
+      padding: 7px 18px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      pointer-events: all;
+    }
+    .over-action-btn.share {
+      border-color: #88ff4466;
+      color: #88ff44;
+    }
+
+    /* ── 排行榜模态框 ─────────────────────── */
+    #rankModal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    #rankModal.show { display: flex; }
+    #rankBox {
+      background: #0d0d24;
+      border: 1px solid #00e5ff44;
+      border-radius: 12px;
+      padding: 20px;
+      width: min(90vw, 360px);
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    #rankTitle {
+      color: #00e5ff;
+      font-size: 17px;
+      text-align: center;
+      margin-bottom: 14px;
+      text-shadow: 0 0 10px #00e5ff;
+      letter-spacing: 2px;
+    }
+    .rank-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 4px;
+      border-bottom: 1px solid #ffffff11;
+      font-size: 13px;
+      color: #aaa;
+    }
+    .rank-row.rank-self { color: #ffd700; font-weight: bold; }
+    .rank-row .rk-no { width: 28px; color: #555; }
+    .rank-row .rk-name { flex: 1; }
+    .rank-row .rk-score { color: #00e5ff; width: 70px; text-align: right; }
+    .rank-row .rk-stage { width: 56px; text-align: right; font-size: 11px; }
+    #rankCloseBtn {
+      display: block;
+      margin: 14px auto 0;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid #00e5ff44;
+      border-radius: 16px;
+      color: #00e5ff;
+      font-size: 13px;
+      padding: 6px 24px;
+      cursor: pointer;
+    }
+    #rankEditName {
+      margin-top: 14px;
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+    }
+    #rankEditName input {
+      background: rgba(0,0,0,0.6);
+      border: 1px solid #00e5ff44;
+      border-radius: 5px;
+      color: #00e5ff;
+      font-size: 13px;
+      padding: 3px 8px;
+      width: 110px;
+      outline: none;
+      margin: 4px 5px;
+    }
   </style>
 </head>
 <body>
@@ -300,6 +425,12 @@
         无人机自动持续跳跃，向上爬升<br>
         跌落底部则游戏结束
       </div>
+      <!-- 首次昵称输入 -->
+      <div id="nicknameArea" style="display:none;">
+        <span style="color:#00e5ff88;font-size:13px;">飞行员名称：</span>
+        <input id="nicknameInput" type="text" maxlength="10" placeholder="起个名字" autocomplete="off">
+        <button id="nicknameSaveBtn">确认</button>
+      </div>
     </div>
 
     <!-- 游戏结束界面 -->
@@ -321,6 +452,24 @@
         </div>
       </div>
       <div class="restart-btn" id="restartHint">按 空格键 或 点击 重新开始</div>
+      <!-- 排行榜 + 分享按钮 -->
+      <div id="overBtnRow">
+        <button class="over-action-btn" id="rankBtn">🏆 排行榜</button>
+        <button class="over-action-btn share" id="shareBtn">📤 分享战绩</button>
+      </div>
+    </div>
+
+    <!-- 排行榜模态框 -->
+    <div id="rankModal">
+      <div id="rankBox">
+        <div id="rankTitle">🏆 本机排行榜</div>
+        <div id="rankList"></div>
+        <div id="rankEditName">
+          修改名称：<input id="rankNameInput" type="text" maxlength="10" autocomplete="off">
+          <button id="rankNameSaveBtn" style="color:#00e5ff;background:none;border:1px solid #00e5ff44;border-radius:5px;padding:2px 8px;cursor:pointer;">保存</button>
+        </div>
+        <button id="rankCloseBtn">关闭</button>
+      </div>
     </div>
   </div>
 </div>
@@ -329,6 +478,33 @@
 // ============================================================
 //  雾都飞升：无人机挑战  —— 完整游戏逻辑
 // ============================================================
+
+// ── localStorage 社交工具 ────────────────────────────────────
+const LS_NAME = 'dronePilotName';
+const LS_RANK = 'droneRankings';
+
+function getPilotName() {
+  return localStorage.getItem(LS_NAME) || '';
+}
+function savePilotName(name) {
+  localStorage.setItem(LS_NAME, (name.trim().slice(0, 10)) || '无名飞行员');
+}
+function getRankings() {
+  try { return JSON.parse(localStorage.getItem(LS_RANK)) || []; }
+  catch (e) { return []; }
+}
+function saveRankings(arr) {
+  localStorage.setItem(LS_RANK, JSON.stringify(arr));
+}
+function addRanking(score, stage) {
+  const name = getPilotName() || '无名飞行员';
+  const date = new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+  const list = getRankings();
+  list.push({ score, stage, name, date });
+  list.sort((a, b) => b.score - a.score);
+  saveRankings(list.slice(0, 20));
+}
+// ────────────────────────────────────────────────────────────
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -457,7 +633,7 @@ const DRONE_H       = 22;
 //  游戏状态
 // ============================================================
 let state = 'idle'; // idle | running | over
-let bestHeight = 0;
+let bestHeight = (() => { const r = getRankings(); return r.length ? r[0].score : 0; })();
 
 let drone, platforms, scrollY, currentHeight, scrollSpeed, frameCount;
 let keys = { left: false, right: false };
@@ -1654,6 +1830,7 @@ function triggerGameOver() {
   finalStage.style.textShadow = `0 0 8px ${currentStage.color}`;
   finalBest.textContent  = bestHeight + ' m';
   gameOverScr.classList.add('show');
+  addRanking(currentHeight, currentStage.label); // 保存到本地排行榜
 }
 
 // ============================================================
@@ -1734,8 +1911,146 @@ function updateHints() {
 }
 updateHints();
 
+// ============================================================
+//  社交功能：昵称 / 排行榜 / 分享
+// ============================================================
 
-//  窗口尺寸变化处理（移动端适配核心）
+// 阶段颜色映射
+function stageColor(label) {
+  const map = { SLOW: '#00e5ff', FLOW: '#88ff44', FAST: '#ff9800', STORM: '#ff4444', CHAOS: '#ff00ff' };
+  return map[label] || '#aaa';
+}
+
+// ── HUD 飞行员名称 ───────────────────────────────────────────
+function updateHUDPilotName() {
+  let el = document.getElementById('hudPilotName');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'hudPilotName';
+    el.style.cssText = 'font-size:11px;color:#00e5ff88;margin-top:2px;';
+    document.querySelector('#hud .hud-box').appendChild(el);
+  }
+  const n = getPilotName();
+  el.textContent = n ? '飞行员：' + n : '';
+}
+
+// ── 昵称输入 UI ─────────────────────────────────────────────
+function initNicknameUI() {
+  const area  = document.getElementById('nicknameArea');
+  const input = document.getElementById('nicknameInput');
+  const btn   = document.getElementById('nicknameSaveBtn');
+  // 首次无昵称时显示输入区
+  if (!getPilotName()) area.style.display = 'flex';
+  // 阻止键盘事件冒泡到游戏（防止方向键移动无人机）
+  input.addEventListener('keydown', e => e.stopPropagation());
+  input.addEventListener('click',   e => e.stopPropagation());
+  input.addEventListener('focus', () => {
+    setTimeout(() => input.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+  });
+  const save = () => {
+    const v = input.value.trim();
+    if (!v) return;
+    savePilotName(v);
+    area.style.display = 'none';
+    updateHUDPilotName();
+  };
+  btn.addEventListener('click', e => { e.stopPropagation(); save(); });
+  input.addEventListener('keyup', e => { if (e.key === 'Enter') save(); });
+}
+
+// ── 排行榜 UI ────────────────────────────────────────────────
+function renderRankings() {
+  const list      = getRankings().slice(0, 10);
+  const myName    = getPilotName() || '无名飞行员';
+  const container = document.getElementById('rankList');
+  if (!list.length) {
+    container.innerHTML = '<div style="color:#555;text-align:center;padding:20px 0;">暂无记录，快去飞一局吧！</div>';
+    return;
+  }
+  container.innerHTML = list.map((r, i) => {
+    const isSelf = r.name === myName;
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+    return `<div class="rank-row${isSelf ? ' rank-self' : ''}">
+      <span class="rk-no">${medal}</span>
+      <span class="rk-name">${r.name}</span>
+      <span class="rk-score">${r.score} m</span>
+      <span class="rk-stage" style="color:${stageColor(r.stage)}">${r.stage}</span>
+    </div>`;
+  }).join('');
+}
+
+function openRankModal() {
+  renderRankings();
+  document.getElementById('rankNameInput').value = getPilotName() || '';
+  document.getElementById('rankModal').classList.add('show');
+}
+function closeRankModal() {
+  document.getElementById('rankModal').classList.remove('show');
+}
+
+function initRankUI() {
+  document.getElementById('rankBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    openRankModal();
+  });
+  document.getElementById('rankCloseBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    closeRankModal();
+  });
+  // 点击模态框遮罩关闭
+  document.getElementById('rankModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('rankModal')) closeRankModal();
+  });
+  const rankNI = document.getElementById('rankNameInput');
+  rankNI.addEventListener('keydown', e => e.stopPropagation());
+  rankNI.addEventListener('click',   e => e.stopPropagation());
+  document.getElementById('rankNameSaveBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    const v = rankNI.value.trim();
+    if (!v) return;
+    savePilotName(v);
+    renderRankings();
+    updateHUDPilotName();
+  });
+}
+
+// ── 分享成绩 ─────────────────────────────────────────────────
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;pointer-events:none;';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); cb(); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+function initShareUI() {
+  const btn = document.getElementById('shareBtn');
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const n    = getPilotName() || '我';
+    const text = `${n}在《雾都飞升》无人机挑战中飞到了 ${currentHeight} m！达到了 ${currentStage.label} 阶段！\n快来挑战我 👉 https://daka-agent.github.io/DroneChallengeGame/`;
+    const orig = btn.textContent;
+    const onCopied = () => {
+      btn.textContent = '✅ 已复制！';
+      setTimeout(() => { btn.textContent = orig; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onCopied).catch(() => fallbackCopy(text, onCopied));
+    } else {
+      fallbackCopy(text, onCopied);
+    }
+  });
+}
+
+// ── 社交功能初始化入口 ────────────────────────────────────────
+initNicknameUI();
+updateHUDPilotName();
+initRankUI();
+initShareUI();
+
+
 // ============================================================
 function handleResize() {
   const dpr = window.devicePixelRatio || 1;
