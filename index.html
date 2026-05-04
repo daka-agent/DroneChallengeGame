@@ -492,7 +492,7 @@ const JSONBIN_API_URL = 'https://api.jsonbin.io/v3/b/' + JSONBIN_BIN_ID;
 // 缓存配置（避免每次打开排行榜都要等待网络请求）
 const CACHE_KEY = 'droneGlobalRankingsCache';
 const CACHE_TIME_KEY = 'droneGlobalRankingsCacheTime';
-const CACHE_MAX_AGE = 5 * 60 * 1000; // 5分钟有效期
+const CACHE_MAX_AGE = 30 * 60 * 1000; // 30分钟有效期
 
 // 读取缓存的全球排行榜
 function getCachedGlobalRankings() {
@@ -532,7 +532,7 @@ async function fetchGlobalRankings() {
   if (IS_LOCAL_FILE) return null;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒超时
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8秒超时
 
   try {
     const resp = await fetch(JSONBIN_API_URL, {
@@ -546,7 +546,7 @@ async function fetchGlobalRankings() {
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === 'AbortError') {
-      console.warn('获取全球排行榜超时（5秒）');
+      console.warn('获取全球排行榜超时（8秒）');
     } else {
       console.warn('获取全球排行榜失败:', e.message);
     }
