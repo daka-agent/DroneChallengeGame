@@ -585,7 +585,14 @@ function getPilotName() {
   return localStorage.getItem(LS_NAME) || '';
 }
 function savePilotName(name) {
-  localStorage.setItem(LS_NAME, (name.trim().slice(0, 10)) || '无名飞行员');
+  try {
+    const val = (name.trim().slice(0, 10)) || '无名飞行员';
+    localStorage.setItem(LS_NAME, val);
+    return true;
+  } catch (e) {
+    console.error('保存昵称失败:', e);
+    return false;
+  }
 }
 function getRankings() {
   try { return JSON.parse(localStorage.getItem(LS_RANK)) || []; }
@@ -2211,9 +2218,17 @@ function initRankUI() {
     e.stopPropagation(); e.preventDefault();
     const v = rankNI.value.trim();
     if (!v) return;
-    savePilotName(v);
+    const ok = savePilotName(v);
+    if (ok) {
+      saveBtn.textContent = '✅ 已保存';
+      setTimeout(() => { saveBtn.textContent = '保存'; }, 1500);
+    } else {
+      saveBtn.textContent = '⚠️ 保存失败';
+      setTimeout(() => { saveBtn.textContent = '保存'; }, 2000);
+    }
     renderRankings();
     updateHUDPilotName();
+    rankNI.blur(); // 收起手机端虚拟键盘
   };
   saveBtn.addEventListener('click', doSave);
   saveBtn.addEventListener('touchstart', doSave, { passive: false });
@@ -2222,6 +2237,10 @@ function initRankUI() {
   rankNI.addEventListener('keydown',   e => e.stopPropagation());
   rankNI.addEventListener('click',     e => e.stopPropagation());
   rankNI.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  // 手机端获取焦点时，将输入框滚动到可视区域，避免虚拟键盘遮挡
+  rankNI.addEventListener('focus', () => {
+    setTimeout(() => rankNI.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+  });
 }
 
 // ── 分享成绩 ─────────────────────────────────────────────────
