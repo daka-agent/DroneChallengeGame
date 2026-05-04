@@ -467,7 +467,7 @@
 <!-- 排行榜模态框（必须在 ui-overlay 外部，否则 pointer-events:none 会屏蔽点击） -->
 <div id="rankModal">
   <div id="rankBox">
-    <div id="rankTitle">🏆 本机排行榜</div>
+    <div id="rankTitle">🌍 全球排行榜</div>
     <div id="rankList"></div>
     <div id="rankEditName">
       修改名称：<input id="rankNameInput" type="text" maxlength="10" autocomplete="off">
@@ -481,6 +481,57 @@
 // ============================================================
 //  雾都飞升：无人机挑战  —— 完整游戏逻辑
 // ============================================================
+
+// ============================================================
+//  JSONBin 配置（全球排行榜）
+// ============================================================
+const JSONBIN_API_KEY = '$2a$10$cCeNWB5puAIS.ADCodxi/OWu7WK8lqE.hhSmByV8RDfy2XSXzEF5m';
+const JSONBIN_BIN_ID = '69f7e58d856a682189a1fa12';
+const JSONBIN_API_URL = 'https://api.jsonbin.io/v3/b/' + JSONBIN_BIN_ID;
+
+// 生成或获取设备唯一ID（用于去重，每个设备只保存最高分）
+function getDeviceId() {
+  let deviceId = localStorage.getItem('droneDeviceId');
+  if (!deviceId) {
+    deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem('droneDeviceId', deviceId);
+  }
+  return deviceId;
+}
+
+// 从 JSONBin 读取全球排行榜
+async function fetchGlobalRankings() {
+  try {
+    const resp = await fetch(JSONBIN_API_URL, {
+      headers: { 'X-Access-Key': JSONBIN_API_KEY }
+    });
+    if (!resp.ok) throw new Error('读取失败');
+    const data = await resp.json();
+    return data.record.rankings || [];
+  } catch (e) {
+    console.error('获取全球排行榜失败:', e);
+    return null;
+  }
+}
+
+// 保存全球排行榜到 JSONBin（只保存每个设备的最高分）
+async function saveGlobalRankings(rankings) {
+  try {
+    const resp = await fetch(JSONBIN_API_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Access-Key': JSONBIN_API_KEY
+      },
+      body: JSON.stringify({ rankings: rankings })
+    });
+    if (!resp.ok) throw new Error('保存失败');
+    return true;
+  } catch (e) {
+    console.error('保存全球排行榜失败:', e);
+    return false;
+  }
+}
 
 // ── localStorage 社交工具 ────────────────────────────────────
 const LS_NAME = 'dronePilotName';
@@ -502,10 +553,51 @@ function saveRankings(arr) {
 function addRanking(score, stage) {
   const name = getPilotName() || '无名飞行员';
   const date = new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+  const deviceId = getDeviceId();
+
+  // 1. 保存到本机（作为备用）
   const list = getRankings();
-  list.push({ score, stage, name, date });
+  list.push({ score, stage, name, date, deviceId });
   list.sort((a, b) => b.score - a.score);
   saveRankings(list.slice(0, 20));
+
+  // 2. 保存到全球排行榜（JSONBin）
+  saveToGlobalRankings(score, stage, name, date, deviceId);
+}
+
+// 保存分数到全球排行榜（异步，不阻塞游戏）
+function saveToGlobalRankings(score, stage, name, date, deviceId) {
+  fetchGlobalRankings().then(globalList => {
+    if (globalList === null) {
+      console.log('全球排行榜暂不可用，已保存到本机');
+      return;
+    }
+
+    // 检查这个设备是否已经有记录
+    const existingIndex = globalList.findIndex(r => r.deviceId === deviceId);
+
+    if (existingIndex >= 0) {
+      // 设备已存在，只更新最高分
+      if (score > globalList[existingIndex].score) {
+        globalList[existingIndex] = { name, score, stage, date, deviceId };
+      } else {
+        return; // 不是最高分，不需要更新
+      }
+    } else {
+      // 新设备，添加记录
+      globalList.push({ name, score, stage, date, deviceId });
+    }
+
+    // 排序并只保留前50名（JSONBin免费版有大小限制）
+    globalList.sort((a, b) => b.score - a.score);
+    globalList = globalList.slice(0, 50);
+
+    // 保存到JSONBin
+    saveGlobalRankings(globalList).then(success => {
+      if (success) console.log('✅ 全球排行榜已更新');
+      else console.log('❌ 全球排行榜保存失败');
+    });
+  });
 }
 // ────────────────────────────────────────────────────────────
 
@@ -1968,14 +2060,36 @@ function initNicknameUI() {
 }
 
 // ── 排行榜 UI ────────────────────────────────────────────────
-function renderRankings() {
-  const list      = getRankings().slice(0, 10);
-  const myName    = getPilotName() || '无名飞行员';
+async function renderRankings() {
   const container = document.getElementById('rankList');
+  const titleEl   = document.getElementById('rankTitle');
+  const myName    = getPilotName() || '无名飞行员';
+
+  // 显示加载状态
+  container.innerHTML = '<div style="color:#00e5ff;text-align:center;padding:20px 0;">🌍 正在加载全球排行榜...</div>';
+
+  // 尝试从 JSONBin 读取全球排行榜
+  const globalList = await fetchGlobalRankings();
+
+  let list;
+  let isGlobal = false;
+
+  if (globalList && globalList.length > 0) {
+    // 成功读取全球排行榜
+    list = globalList.slice(0, 10);
+    isGlobal = true;
+    if (titleEl) titleEl.textContent = '🌍 全球排行榜';
+  } else {
+    // 读取失败，使用本机排行榜
+    list = getRankings().slice(0, 10);
+    if (titleEl) titleEl.textContent = '📱 本机排行榜';
+  }
+
   if (!list.length) {
     container.innerHTML = '<div style="color:#555;text-align:center;padding:20px 0;">暂无记录，快去飞一局吧！</div>';
     return;
   }
+
   container.innerHTML = list.map((r, i) => {
     const isSelf = r.name === myName;
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
