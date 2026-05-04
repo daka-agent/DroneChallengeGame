@@ -523,8 +523,14 @@ function getDeviceId() {
   return deviceId;
 }
 
+// 检测是否为本地 file:// 环境（无法跨域请求 JSONBin）
+const IS_LOCAL_FILE = location.protocol === 'file:';
+
 // 从 JSONBin 读取全球排行榜（带超时）
 async function fetchGlobalRankings() {
+  // 本地 file:// 环境无法发起跨域请求，直接跳过
+  if (IS_LOCAL_FILE) return null;
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒超时
 
@@ -540,9 +546,9 @@ async function fetchGlobalRankings() {
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === 'AbortError') {
-      console.error('获取全球排行榜超时（5秒）');
+      console.warn('获取全球排行榜超时（5秒）');
     } else {
-      console.error('获取全球排行榜失败:', e);
+      console.warn('获取全球排行榜失败:', e.message);
     }
     return null;
   }
@@ -550,6 +556,8 @@ async function fetchGlobalRankings() {
 
 // 保存全球排行榜到 JSONBin（只保存每个设备的最高分）
 async function saveGlobalRankings(rankings) {
+  // 本地 file:// 环境无法发起跨域请求，直接跳过
+  if (IS_LOCAL_FILE) return false;
   try {
     const resp = await fetch(JSONBIN_API_URL, {
       method: 'PUT',
@@ -2130,6 +2138,13 @@ async function renderRankings() {
   const container = document.getElementById('rankList');
   const titleEl   = document.getElementById('rankTitle');
 
+  // 本地 file:// 环境无法访问 JSONBin，直接显示本机排行榜
+  if (IS_LOCAL_FILE) {
+    renderRankList(getRankings(), false);
+    if (titleEl) titleEl.innerHTML = '📱 本机排行榜 <span style="font-size:11px;opacity:0.5;font-weight:normal;">（本地预览）</span>';
+    return;
+  }
+
   // ① 优先使用缓存数据（立即显示，0延迟）
   const cached = getCachedGlobalRankings();
   if (cached && cached.length > 0) {
@@ -2150,6 +2165,7 @@ async function renderRankings() {
   } else if (!cached) {
     // 网络失败且无缓存，降级显示本机排行榜
     renderRankList(getRankings(), false);
+    if (titleEl) titleEl.textContent = '📱 本机排行榜';
   }
 }
 
